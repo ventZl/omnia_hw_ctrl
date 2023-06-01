@@ -21,4 +21,7 @@
 #define WLS_BEGIN		0x0800F800
 #define WLS_LENGTH		0x800
 
+/* On GD32 we don't relocate segments (besides data) */
+#define RELOC_SEGMENT_AT(_seg)	>_seg
+
 #endif /* MEMORY_LAYOUT_H */

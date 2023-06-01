@@ -1,4 +1,4 @@
-#if !BOOTLOADER_BUILD
+#if !BOOTLOADER_BUILD && (defined(STM32F030X8) || defined(GD32F1x0))
 
 /*
  * Non-volatile wear-leveled variable storage
@@ -188,4 +188,4 @@ bool wls_set_var(wls_var_id_t id, uint16_t value)
 	return wls_program_var(var, id, value);
 }
 
-#endif /* !BOOTLOADER_BUILD */
+#endif /* !BOOTLOADER_BUILD && (defined(STM32F030X8) || defined(GD32F1x0)) */

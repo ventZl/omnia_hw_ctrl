@@ -1,7 +1,9 @@
+#if defined(STM32F030X8) || defined(GD32F1x0)
+
 #include "debug.h"
 #include "firmware_flash.h"
 #include "i2c_iface.h"
-#include "reset.h"
+#include "reset_common_stm32_gd32.h"
 #include "wear_leveled_storage.h"
 
 static bool bootloader_has_feature(uint16_t feature)
@@ -33,3 +35,5 @@ void old_type_bootloader_request_if_needed(void)
 	debug("setting old type bootloader request\n");
 	wls_set_var(WLS_VAR_RESET_REASON, STAY_IN_BOOTLOADER_REQ);
 }
+
+#endif /* defined(STM32F030X8) || defined(GD32F1x0) */

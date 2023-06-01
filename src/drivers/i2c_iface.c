@@ -41,7 +41,9 @@ static const features_t slave_features_supported __section(".features") = {
 		FEAT_FLASHING |
 		FEAT_NEW_MESSAGE_API |
 		FEAT_BRIGHTNESS_INT |
+#if defined(STM32F030X8) || defined(GD32F1x0)
 		FEAT_IF(CAN_OLD_MESSAGE_API, !BOOTLOADER_BUILD) |
+#endif
 		FEAT_IF(POWEROFF_WAKEUP, POWEROFF_WAKEUP_ENABLED),
 	.status_features =
 		STS_MCU_TYPE |
