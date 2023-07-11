@@ -184,7 +184,7 @@ static void on_get_status_success(i2c_iface_priv_t *priv)
 	reply = priv->reply[0] | (priv->reply[1] << 8);
 	cntr = FIELD_GET(STS_BUTTON_COUNTER_MASK, reply);
 
-	button_counter_decrease(cntr);
+	sys_button_counter_decrease(cntr);
 }
 
 static __maybe_unused int cmd_get_status(i2c_iface_priv_t *priv)
@@ -249,7 +249,7 @@ static void on_general_control_success(i2c_iface_priv_t *priv)
 #endif
 
 	if (mask & CTL_BUTTON_MODE)
-		button_set_user_mode(ctrl & CTL_BUTTON_MODE);
+		sys_button_set_user_mode(ctrl & CTL_BUTTON_MODE);
 
 	if (!BOOTLOADER_BUILD && (set & CTL_BOOTLOADER))
 		i2c_iface.req = I2C_IFACE_REQ_BOOTLOADER;
@@ -470,7 +470,7 @@ static __maybe_unused int cmd_led_mode(i2c_iface_priv_t *priv)
 	uint8_t *args = &priv->cmd[1];
 
 	debug("led_mode\n");
-	led_set_user_mode(args[0] & 0x0F, !!(args[0] & 0x10));
+	sys_led_set_user_mode(args[0] & 0x0F, !!(args[0] & 0x10));
 
 	return 0;
 }
@@ -480,7 +480,7 @@ static __maybe_unused int cmd_led_state(i2c_iface_priv_t *priv)
 	uint8_t *args = &priv->cmd[1];
 
 	debug("led_state\n");
-	led_set_state_user(args[0] & 0x0F, !!(args[0] & 0x10));
+	sys_led_set_state_user(args[0] & 0x0F, !!(args[0] & 0x10));
 
 	return 0;
 }
@@ -498,7 +498,7 @@ static __maybe_unused int cmd_led_color(i2c_iface_priv_t *priv)
 static __maybe_unused int cmd_set_brightness(i2c_iface_priv_t *priv)
 {
 	debug("set_brightness\n");
-	led_driver_set_brightness(priv->cmd[1]);
+	sys_led_driver_set_brightness(priv->cmd[1]);
 
 	return 0;
 }
@@ -535,7 +535,7 @@ static __maybe_unused int cmd_set_watchdog_state(i2c_iface_priv_t *priv)
 {
 	debug("watchdog_state\n");
 
-	watchdog_enable(priv->cmd[1]);
+	sys_watchdog_enable(priv->cmd[1]);
 
 	return 0;
 }
@@ -555,7 +555,7 @@ static __maybe_unused int cmd_set_wdt_timeout(i2c_iface_priv_t *priv)
 	uint8_t *args = &priv->cmd[1];
 
 	debug("set_wdt_timeout\n");
-	watchdog_set_timeout(args[0] | (args[1] << 8));
+	sys_watchdog_set_timeout(args[0] | (args[1] << 8));
 
 	return 0;
 }
@@ -656,7 +656,7 @@ static __maybe_unused int cmd_power_off(i2c_iface_priv_t *priv)
 
 	debug("power_off %#06x\n", arg);
 
-	poweroff(arg & CMD_POWER_OFF_POWERON_BUTTON, i2c_iface.wakeup);
+	sys_poweroff(arg & CMD_POWER_OFF_POWERON_BUTTON, i2c_iface.wakeup);
 
 	return 0;
 }

@@ -2,7 +2,7 @@
 #define RESET_H
 
 #include "reset_common.h"
-#include "memory_layout.h"
+#include "svc.h"
 
 static inline reset_reason_t get_reset_reason(reset_reason_info_t *info)
 {
@@ -33,13 +33,12 @@ static inline void set_reset_reason(reset_reason_t reason, uint32_t fault)
 	RFSYS(2) = fault;
 }
 
-static __noreturn inline void soft_reset_to_other_program(void)
-{
-	if (!BOOTLOADER_BUILD)
-		set_reset_reason(STAY_IN_BOOTLOADER_REQ, 0);
+void plat_soft_reset_to_other_program(void);
+SYSCALL(plat_soft_reset_to_other_program)
 
-	reset_to_address(BOOTLOADER_BUILD ? APPLICATION_BEGIN
-					  : BOOTLOADER_BEGIN);
+static inline void soft_reset_to_other_program(void)
+{
+	sys_plat_soft_reset_to_other_program();
 }
 
 #endif /* RESET_H */
