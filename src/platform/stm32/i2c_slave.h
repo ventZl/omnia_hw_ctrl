@@ -1,5 +1,5 @@
-#ifndef I2C_H
-#define I2C_H
+#ifndef I2C_SLAVE_H
+#define I2C_SLAVE_H
 
 #include "stm32f0xx_i2c.h"
 #include "compiler.h"
@@ -222,4 +222,4 @@ static __force_inline void i2c_slave_recovery_handler(i2c_nr_t i2c_nr)
 
 void i2c_slave_irq_handler(void);
 
-#endif /* I2C_H */
+#endif /* I2C_SLAVE_H */
