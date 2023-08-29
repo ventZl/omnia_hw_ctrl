@@ -11,6 +11,16 @@
 #define FIRMWARE_MAX_SIZE \
 	(BOOTLOADER_BUILD ? APPLICATION_MAX_SIZE : BOOTLOADER_MAX_SIZE)
 
+#define FEATURES_MAGIC 0xfea70235
+
+typedef struct {
+	uint32_t magic;
+	uint16_t features;
+	uint8_t status_features;
+	uint8_t reserved;
+	uint32_t csum;
+} features_t;
+
 static __maybe_unused const void *firmware_buffer = (const void *)FIRMWARE_BEGIN;
 
 static inline bool firmware_is_good_stack_addr(uint32_t addr)

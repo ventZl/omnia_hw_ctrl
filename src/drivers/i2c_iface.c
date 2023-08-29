@@ -10,6 +10,7 @@
 #include "crc32.h"
 #include "time.h"
 #include "poweroff.h"
+#include "firmware_flash.h"
 
 #if BOOTLOADER_BUILD
 # define __version_section __section(".boot_version")
@@ -25,15 +26,8 @@ static __maybe_unused struct {
 } app_checksum __section(".crcsum");
 
 #define FEAT_IF(feat, cond)	((cond) ? FEAT_ ## feat : 0)
-#define FEATURES_MAGIC		0xfea70235
 
-static const struct {
-	uint32_t magic;
-	uint16_t features;
-	uint8_t status_features;
-	uint8_t reserved;
-	uint32_t csum;
-} slave_features_supported __section(".features") = {
+static const features_t slave_features_supported __section(".features") = {
 	.magic = FEATURES_MAGIC,
 	.features =
 		FEAT_IF(PERIPH_MCU, OMNIA_BOARD_REVISION >= 32) |
@@ -134,7 +128,7 @@ static __maybe_unused int cmd_get_features(i2c_iface_priv_t *priv)
 		 * requested firmware (bootloader for 0xbb, application for
 		 * 0xaa).
 		 */
-		typeof(slave_features_supported) *ptr;
+		const features_t *ptr;
 		uint32_t features;
 		uint32_t csum;
 
