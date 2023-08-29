@@ -30,12 +30,12 @@ static inline uint32_t get_unaligned32(const void *ptr)
 
 static __force_inline void enable_irq(void)
 {
-	asm volatile("cpsie i\n" : : : "memory");
+	asm volatile("cpsie i\n" : : : "memory", "cc");
 }
 
 static __force_inline void disable_irq(void)
 {
-	asm volatile("cpsid i\n" : : : "memory");
+	asm volatile("cpsid i\n" : : : "memory", "cc");
 }
 
 static __force_inline void set_msp(uint32_t msp)
@@ -54,12 +54,12 @@ static __force_inline uint32_t get_ipsr(void)
 
 static __force_inline void isb(void)
 {
-	asm volatile("isb\n");
+	asm volatile("isb\n" : : : "memory");
 }
 
 static __force_inline void dsb(void)
 {
-	asm volatile("dsb\n");
+	asm volatile("dsb\n" : : : "memory");
 }
 
 static __force_inline void nop(void)
@@ -69,7 +69,7 @@ static __force_inline void nop(void)
 
 static __force_inline void wait_for_interrupt(void)
 {
-	asm volatile("wfi\n");
+	asm volatile("wfi\n" : : : "memory");
 }
 
 #ifdef __ARM_ARCH_6M__
