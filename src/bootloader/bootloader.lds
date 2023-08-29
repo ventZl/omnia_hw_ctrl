@@ -33,15 +33,14 @@ SECTIONS
 		*(.rodata*)
 	} >flash
 
-	. = ALIGN(4);
-	_sfdata = .;
-
-	.data : AT (_sfdata) {
+	.data : {
+		. = ALIGN(4);
+		_sfdata = LOADADDR(.data);
 		_sdata = ABSOLUTE(.);
 		*(.data*)
 		. = ALIGN(4);
 		_edata = ABSOLUTE(.);
-	} >ram
+	} >ram AT>flash
 
 	.bss : {
 		. = ALIGN(4);
