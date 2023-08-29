@@ -181,8 +181,8 @@ void main(void)
 			break;
 
 		case BOOTLOADER:
-			set_reset_reason(STAY_IN_BOOTLOADER_REQ, 0);
-			reset_to_address(BOOTLOADER_BEGIN);
+			soft_reset_to_other_program();
+			break;
 		}
 	}
 }

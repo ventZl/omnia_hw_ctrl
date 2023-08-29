@@ -192,7 +192,7 @@ static void bootloader(void)
 		break;
 
 	case START_APPLICATION:
-		reset_to_address(APPLICATION_BEGIN);
+		soft_reset_to_other_program();
 		break;
 
 	case RESET_TO_APPLICATION:
