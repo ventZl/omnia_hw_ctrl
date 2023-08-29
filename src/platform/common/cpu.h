@@ -245,8 +245,9 @@ static __force_inline __noreturn void reset_to_address(uint32_t isr_vec_addr)
 	/* instruction synchronization barrier to flush pipeline */
 	isb();
 
-	/* jump to new app */
-	new_reset_handler();
+	/* branch instead of call so that nothing is pushed to stack */
+	asm volatile("bx %0\n\t" : : "r" (new_reset_handler));
+	unreachable();
 }
 
 #endif /* CPU_H */
