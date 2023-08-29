@@ -8,6 +8,9 @@ MEMORY
 	crcsum (r)	: ORIGIN = ORIGIN(isr_vector) + LENGTH(isr_vector),	LENGTH = 8
 	features (r)	: ORIGIN = ORIGIN(crcsum) + LENGTH(crcsum),		LENGTH = 12
 	flash (rx)	: ORIGIN = ORIGIN(features) + LENGTH(features),		LENGTH = APPLICATION_END - ORIGIN(flash)
+#if defined(WLS_BEGIN)
+	wls (r)		: ORIGIN = WLS_BEGIN,					LENGTH = WLS_LENGTH
+#endif
 	ram (xrw)	: ORIGIN = RAM_BEGIN,					LENGTH = RAM_LENGTH
 }
 
@@ -49,6 +52,12 @@ SECTIONS
 		. = ALIGN(4);
 		_ebss = ABSOLUTE(.);
 	}
+
+#if defined(WLS_BEGIN)
+	.wls (NOLOAD) : {
+		KEEP(*(.wls))
+	} >wls
+#endif
 
 	/DISCARD/ : {
 		libgcc.a ( * )

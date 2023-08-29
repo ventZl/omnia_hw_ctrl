@@ -192,6 +192,7 @@ enum features_e {
 	FEAT_NEW_MESSAGE_API		= BIT(9),
 	FEAT_BRIGHTNESS_INT		= BIT(10),
 	FEAT_POWEROFF_WAKEUP		= BIT(11),
+	FEAT_CAN_OLD_MESSAGE_API	= BIT(12),
 };
 
 enum ext_sts_dword_e {
@@ -316,14 +317,17 @@ enum cmd_poweroff_e {
  *      7   |   BOOTLOADER           : 1 - MCU firmware is in bootloader, 0 - MCU firmware is in application
  *      8   |   FLASHING             : 1 - CMD_FLASH is supported with new flahsing protocol,
  *                                     0 - only old flashing protocol at address 0x2c is supported
- *      9   |   NEW_MESSAGE_API      : 1 - Application/bootloader uses only new API to pass messages from/to bootloader/application;
+ *      9   |   NEW_MESSAGE_API      : 1 - Application/bootloader uses new API to pass messages from/to bootloader/application;
  *                                         you should only flash images that support the new API
  *                                     0 - otherwise
  *     10   |   BRIGHTNESS_INT       : 1 - If LED brightness is changed by pressing the front button, the INT_BRIGHTNESS_CHANGED interrupt is raised,
  *                                     0 - the INT_BRIGHTNESS_CHANGED interrupt is not supported
  *     11   |   POWEROFF_WAKEUP      : 1 - CMD_POWER_OFF, CMD_GET_UPTIME_AND_WAKEUP, CMD_SET_WAKEUP commands supported
  *                                     0 - otherwise
- * 12..15   |   reserved
+ *     12   |   CAN_OLD_MESSAGE_API  : 1 - Application supports old message passing API to bootloader, and will use it
+ *                                         if the bootloader does not support the new API
+ *                                     0 - otherwise
+ * 13..15   |   reserved
 */
 
 /*

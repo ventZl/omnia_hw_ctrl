@@ -14,6 +14,11 @@ static inline void flash_plat_init(void)
 	nvic_enable_irq_with_prio(FLASH_IRQn, 3);
 }
 
+static inline bool flash_plat_busy(void)
+{
+	return FLASH->SR & FLASH_SR_BSY;
+}
+
 static inline uint32_t flash_plat_get_and_clear_status(void)
 {
 	uint32_t stat = FLASH->SR;

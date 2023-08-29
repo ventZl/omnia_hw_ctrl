@@ -15,6 +15,11 @@ static inline void flash_plat_init(void)
 	nvic_enable_irq_with_prio(FMC_IRQn, 3);
 }
 
+static inline bool flash_plat_busy(void)
+{
+	return FMC_STAT & FMC_STAT_BUSY;
+}
+
 static inline uint32_t flash_plat_get_and_clear_status(void)
 {
 	uint32_t stat = FMC_STAT;

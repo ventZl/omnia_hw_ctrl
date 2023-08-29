@@ -18,4 +18,7 @@
 #define RAM_LENGTH		0x2000
 #define RAM_END			(RAM_BEGIN + RAM_LENGTH)
 
+#define WLS_BEGIN		0x0800F800
+#define WLS_LENGTH		0x800
+
 #endif /* MEMORY_LAYOUT_H */

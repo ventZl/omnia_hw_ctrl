@@ -19,5 +19,7 @@ void flash_async_erase(uint32_t start, uint16_t len, flash_callback_t callback,
 		       void *priv);
 void flash_async_write(uint32_t dst, const uint8_t *src, uint16_t len,
 		       flash_callback_t callback, void *priv);
+bool flash_sync_erase(uint32_t start, uint16_t len);
+bool flash_sync_write(uint32_t dst, const uint8_t *src, uint16_t len);
 
 #endif /* __FLASH_H */

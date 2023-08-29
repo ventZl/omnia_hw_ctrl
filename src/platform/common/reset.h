@@ -62,6 +62,8 @@ static inline reset_reason_t get_reset_reason(reset_reason_info_t *info)
 	}
 }
 
+void old_type_bootloader_request_if_needed(void);
+
 static inline void set_reset_reason(reset_reason_t reason, uint32_t fault)
 {
 	compiletime_assert(reason != NORMAL_BOOT, "Invalid reset reason");
@@ -72,6 +74,7 @@ static inline void set_reset_reason(reset_reason_t reason, uint32_t fault)
 
 	case STAY_IN_BOOTLOADER_REQ:
 		CRC_FREE_DATA_REG = STAY_IN_BOOTLOADER_REQ;
+		old_type_bootloader_request_if_needed();
 		return;
 
 	default:

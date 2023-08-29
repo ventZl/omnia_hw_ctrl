@@ -144,3 +144,40 @@ void flash_async_write(uint32_t dst, const uint8_t *src, uint16_t len,
 {
 	flash_async_op(FLASH_OP_WRITE, dst, len, src, callback, priv);
 }
+
+typedef struct {
+	bool done;
+	bool success;
+} flash_sync_op_t;
+
+static void flash_sync_cb(bool success, void *priv)
+{
+	volatile flash_sync_op_t *op = priv;
+
+	op->success = success;
+	op->done = true;
+}
+
+bool flash_sync_erase(uint32_t start, uint16_t len)
+{
+	flash_sync_op_t op = {};
+
+	flash_async_erase(start, len, flash_sync_cb, &op);
+
+	while (!op.done)
+		wait_for_interrupt();
+
+	return op.success;
+}
+
+bool flash_sync_write(uint32_t dst, const uint8_t *src, uint16_t len)
+{
+	flash_sync_op_t op = {};
+
+	flash_async_write(dst, src, len, flash_sync_cb, &op);
+
+	while (!op.done)
+		wait_for_interrupt();
+
+	return op.success;
+}
