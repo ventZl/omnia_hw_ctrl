@@ -78,14 +78,18 @@ $(foreach tool,$(HOSTTOOLS),$(eval $(call HostToolRule,$(tool))))
 
 define CompileRule
   build.$(1)/$(2)/$(3)%.o: $(3)%.c
-	$(call echo,$(1),$(2),CC,$$^)
-	$(Q)mkdir -p $$(@D) && $$(CC) -c $$(CPPFLAGS) $$(CPPFLAGS_$(1)) $$(CFLAGS) $$(CFLAGS_$(1)) $$< -o $$@
+	$(call echo,$(1),$(2),CC,$$<)
+	$(Q)mkdir -p $$(@D) && $$(CC) -c $$(CPPFLAGS) $$(CPPFLAGS_$(1)) $$(CFLAGS) $$(CFLAGS_$(1)) -MMD $$< -o $$@
+
+  -include build.$(1)/$(2)/$(3)*.d
 endef
 
 define LinkScriptRule
   build.$(1)/$(2)/$(3): $(3)
 	$(call echo,$(1),$(2),GENLDS,$$^)
-	$(Q)mkdir -p $$(@D) && $$(CPP) $$(CPPFLAGS) $$(CPPFLAGS_$(1)) -D__ASSEMBLY__ -x assembler-with-cpp -std=c99 -P -o $$@ $$<
+	$(Q)mkdir -p $$(@D) && $$(CPP) $$(CPPFLAGS) $$(CPPFLAGS_$(1)) -D__ASSEMBLY__ -x assembler-with-cpp -std=c99 -MT build.$(1)/$(2)/$(3) -MMD -P -o $$@ $$<
+
+  -include build.$(1)/$(2)/$(3:.lds=.d)
 endef
 
 define PlatBuildVariant
