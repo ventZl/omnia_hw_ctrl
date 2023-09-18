@@ -240,7 +240,7 @@ static void __section(".startup") config_mpu_region(mpu_region_t reg,
 {
 	MPU_RGDn_WORD0(reg) = (uint32_t)start & MPU_RGDn_WORD0_SRTADDR;
 	MPU_RGDn_WORD1(reg) = ((uint32_t)end & MPU_RGDn_WORD1_ENDADDR) - 1;
-	MPU_RGDn_WORD2(reg) = access;
+	MPU_RGDn_WORD2(reg) = access | MPU_RGDn_WORD2_MnUM_RWX(1) | MPU_RGDn_WORD2_MnSM_RWX(1);
 	MPU_RGDn_WORD3(reg) = MPU_RGDn_WORD3_VLD;
 	isb();
 	dsb();
