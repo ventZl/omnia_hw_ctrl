@@ -2,6 +2,7 @@
 #define IRQ_H
 
 #include "cpu.h"
+#include "mkl81.h"
 #include "svc.h"
 #include "debug.h"
 
@@ -17,6 +18,7 @@ static __force_inline void enable_irq_with_prio(IRQn_Type irq, uint8_t prio)
 	case PortC_IRQn:
 	case PortD_IRQn:
 	case PortE_IRQn:
+    case LTC0_IRQn:
 		nvic_enable_irq_with_prio(irq, prio);
 		break;
 	default:

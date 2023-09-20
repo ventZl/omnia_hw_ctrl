@@ -107,6 +107,9 @@ typedef enum {
 	SYS_plat_soft_reset_to_other_program,
 	SYS_hard_reset,
 	SYS_poweroff,
+    SYS_trng_init,
+    SYS_trng_ready,
+    SYS_trng_entropy
 } svc_t;
 
 static __force_inline uint32_t sv_call_0(svc_t svc)

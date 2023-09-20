@@ -1,6 +1,8 @@
 #ifndef CRYPTO_H
 #define CRYPTO_H
 
+#include "trng.h"
+
 typedef void (*verify_callback_t)(bool success, void *priv);
 
 static inline void

@@ -17,6 +17,7 @@
 #include "watchdog.h"
 #include "poweroff.h"
 #include "debug.h"
+#include "trng.h"
 
 #pragma GCC optimize ("O3")
 
@@ -88,6 +89,15 @@ void __irq svc_handler(void)
 	case SYS_poweroff:
 		poweroff(arg1, arg2);
 		break;
+    case SYS_trng_init:
+        trng_init();
+        break;
+    case SYS_trng_ready:
+        frame->r0 = trng_ready();
+        break;
+    case SYS_trng_entropy:
+        frame->r0 = trng_entropy((uint32_t *) arg1);
+        break;
 	default:
 		debug("unhandled svc(%u, %#10x, %#10x)\n", svc, arg1, arg2);
 		break;

@@ -9,6 +9,7 @@
 #include "memory_layout.h"
 #include "time.h"
 #include "crc32.h"
+#include "trng.h"
 
 #define MAX_ERROR_COUNT		5
 
@@ -28,6 +29,8 @@ static i2c_slave_t i2c_slave = {
 	.cb = i2c_iface_event_cb,
 	.priv = &i2c_iface_priv,
 };
+
+static uint32_t entropy[16] = {0};
 
 /*******************************************************************************
   * @function   app_init
@@ -52,6 +55,8 @@ static void app_init(void)
 
 	/* configure LED driver */
 	led_driver_config();
+
+    sys_trng_init();
 
 	debug("\nInit completed.\n");
 }
@@ -122,6 +127,13 @@ void main(void)
 	app_init();
 
 	while (1) {
+        if (sys_trng_ready())
+        {
+            sys_trng_entropy(entropy);
+		    debug("\nentropy obtained:\n");
+            for (int q = 0; q < 16; ++q)
+                debug("%08x ", entropy[q]);
+        }
 		switch (next_state) {
 		case POWER_ON:
 			err = power_on();

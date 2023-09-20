@@ -21,6 +21,8 @@ static __force_inline void clk_config(AIPS_Slot_Type periph, bool on)
 	_CLK_CFG(TPM2, 6)
 	_CLK_CFG(SPI1, 6)
 	_CLK_CFG(CRC, 6)
+    _CLK_CFG(TRNG, 6)
+    _CLK_CFG(LTC, 5)
 #undef _CLK_CFG
 	default:
 		debug("Invalid peripheral %u for clock config!\n", periph);
