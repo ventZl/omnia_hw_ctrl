@@ -10,6 +10,7 @@
 #include "time.h"
 #include "crc32.h"
 #include "trng.h"
+#include "ltc.h"
 
 #define MAX_ERROR_COUNT		5
 
@@ -30,7 +31,10 @@ static i2c_slave_t i2c_slave = {
 	.priv = &i2c_iface_priv,
 };
 
-static uint32_t entropy[16] = {0};
+// hash input
+static uint8_t data[] = "12345678123456781234567812345678123456781234567812345678123456781" ;
+// hash output 
+static uint8_t hash[32] = { 0 };
 
 /*******************************************************************************
   * @function   app_init
@@ -57,6 +61,7 @@ static void app_init(void)
 	led_driver_config();
 
     sys_trng_init();
+    sys_ltc_init();
 
 	debug("\nInit completed.\n");
 }
@@ -127,12 +132,32 @@ void main(void)
 	app_init();
 
 	while (1) {
-        if (sys_trng_ready())
+        static int counter = 0;
+        if (counter++ < 8)
         {
-            sys_trng_entropy(entropy);
-		    debug("\nentropy obtained:\n");
-            for (int q = 0; q < 16; ++q)
-                debug("%08x ", entropy[q]);
+            uint32_t sha_mode = LTC_SHA_256;
+            const unsigned hash_size = sizeof(data) - 1;
+            sys_ltc_sha_start(sha_mode, hash_size);
+            unsigned q = 0;
+            while (q < hash_size)
+            {
+                unsigned block_size = hash_size - q;
+                if (block_size > 64)
+                {
+                    block_size = 64; 
+                }
+                sys_ltc_sha_data(&data[q], block_size);
+                q += block_size;
+            }
+            sys_ltc_sha_finish(hash);
+            debug("hash:\n");
+            for (unsigned int q = 0; q < ltc_hash_size(sha_mode); ++q)
+            {
+                if (q % 4 == 0 && q != 0)
+                    debug("- ");
+                debug("%02x ", hash[q]);
+            }
+            debug("\n");
         }
 		switch (next_state) {
 		case POWER_ON:

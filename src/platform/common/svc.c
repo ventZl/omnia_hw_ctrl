@@ -18,6 +18,7 @@
 #include "poweroff.h"
 #include "debug.h"
 #include "trng.h"
+#include "ltc.h"
 
 #pragma GCC optimize ("O3")
 
@@ -97,6 +98,18 @@ void __irq svc_handler(void)
         break;
     case SYS_trng_entropy:
         frame->r0 = trng_entropy((uint32_t *) arg1);
+        break;
+    case SYS_ltc_init:
+        ltc_init();
+        break;
+    case SYS_ltc_sha_start:
+        ltc_sha_start((ltc_sha_mode_t) arg1, (uint32_t) arg2);
+        return;
+    case SYS_ltc_sha_data:
+        frame->r0 = ltc_sha_data((uint8_t *) arg1, (uint16_t) arg2);
+        break;
+    case SYS_ltc_sha_finish:
+        frame->r0 = ltc_sha_finish((uint8_t *) arg1);
         break;
 	default:
 		debug("unhandled svc(%u, %#10x, %#10x)\n", svc, arg1, arg2);

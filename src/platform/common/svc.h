@@ -109,7 +109,11 @@ typedef enum {
 	SYS_poweroff,
     SYS_trng_init,
     SYS_trng_ready,
-    SYS_trng_entropy
+    SYS_trng_entropy,
+    SYS_ltc_init,
+    SYS_ltc_sha_start,
+    SYS_ltc_sha_data,
+    SYS_ltc_sha_finish
 } svc_t;
 
 static __force_inline uint32_t sv_call_0(svc_t svc)
