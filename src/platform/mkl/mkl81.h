@@ -1639,21 +1639,67 @@ typedef enum {
 #define LTC0_FIFOSTA LTC_REG32(0x7C0)
 #define LTC0_IFIFO   LTC_REG32(0x7E0)
 #define LTC0_OFIFO   LTC_REG32(0x7F0)
-#define LTC0_PKHA_A LTC_REG32(0x800)
-#define LTC0_PKHA_B LTC_REG32(0xA00)
-#define LTC0_PKHA_N LTC_REG32(0xC00)
-#define LTC0_PKHA_E LTC_REG32(0xE00)
+
+/** Access PKHA_A register or its subregister. 
+ * PHKA_A register is split into four sub-registers: A0, A1, A2, A3.
+ * Contents of this register is accessible either via PHKA_A register
+ * by passing @ref _n as 0 and using value of @ref _x 0 - 63, or one 
+ * may use any of sub-registers @ref _n being (0 - 3) with @ref _n 
+ * in the range of 0 - 15.
+ * @param _n sub-register selected. 0 aliases whole PHKA_A register.
+ *           Values 0-3 valid here.
+ * @param _x word within register. Values 0-15 valid if _n is greater
+ *           than zero, otherwise values 0-63 are valid.
+ */
+#define LTC0_PKHA_A(_n, _x) LTC_REG32(0x800 + (_n * 0x40) + (_x * 4))
+
+/** Access PKHA_B register or its subregister. 
+ * PHKA_B register is split into four sub-registers: A0, A1, A2, A3.
+ * Contents of this register is accessible either via PHKA_B register
+ * by passing @ref _n as 0 and using value of @ref _x 0 - 63, or one 
+ * may use any of sub-registers @ref _n being (0 - 3) with @ref _n 
+ * in the range of 0 - 15.
+ * @param _n sub-register selected. 0 aliases whole PHKA_B register.
+ *           Values 0-3 valid here.
+ * @param _x word within register. Values 0-15 valid if _n is greater
+ *           than zero, otherwise values 0-63 are valid.
+ */
+#define LTC0_PKHA_B(_n, _x) LTC_REG32(0xA00 + (_n * 0x40) + (_x * 4))
+
+/** Access PKHA_N register or its subregister. 
+ * PHKA_N register is split into four sub-registers: A0, A1, A2, A3.
+ * Contents of this register is accessible either via PHKA_N register
+ * by passing @ref _n as 0 and using value of @ref _x 0 - 63, or one 
+ * may use any of sub-registers @ref _n being (0 - 3) with @ref _n 
+ * in the range of 0 - 15.
+ * @param _n sub-register selected. 0 aliases whole PHKA_N register.
+ *           Values 0-3 valid here.
+ * @param _x word within register. Values 0-15 valid if _n is greater
+ *           than zero, otherwise values 0-63 are valid.
+ */
+#define LTC0_PKHA_N(_n, _x) LTC_REG32(0xC00 + (_n * 0x40) + (_x * 4))
+
+/** Access PKHA_E register
+ * @param _x word within register. Values 0-63 are valid.
+ */
+#define LTC0_PKHA_E(_x) LTC_REG32(0xE00 + (_x * 4))
 
 /* LTC0_MDPK */
 
+/* MDPK register contains three fields - ALG, MS and LS.
+ * While especially the contents of MS and LS is operation-sensitive,
+ * and partial writes into this register may get ignored, these fields
+ * are not declared individually. Rather the combined "mode" field is 
+ * declared spanning the whole MS, LS and intermediate reserved area.
+ * This is the way how PHKA commands are described in the reference 
+ * manual.
+ */
 #define LTC0_MDPK_ALG_MASK GENMASK(23,20)
 #define LTC0_MDPK_ALG(_x)    FIELD_PREP(LTC0_MDPK_ALG_MASK, _x)
-#define LTC0_MDPK_ALG_
+#define LTC0_MDPK_ALG_PKHA  LTC0_MDPK_ALG(0b1000)
 
-#define LTC0_MDPK_PKHA_MODE_MS_MASK GENMASK(19, 16)
-#define LTC0_MDPK_PKHA_MODE_MS(_x) FIELD_PREP(LTC0_MDPK_PKHA_MODE_MS_MASK, _x)
-#define LTC0_MDPK_PKHA_MODE_LS_MASK GENMASK(11, 0)
-#define LTC0_MDPK_PKHA_MODE_LS(_x) FIELD_PREP(LTC0_MDPK_PKHA_MODE_LS_MASK, _x)
+#define LTC0_MDPK_PKHA_MODE_MASK GENMASK(19, 0)
+#define LTC0_MDPK_PKHA_MODE(_x) FIELD_PREP(LTC0_MDPK_PKHA_MODE_MASK, _x)
 
 /* LTC0_MD */
 
