@@ -28,6 +28,7 @@ void __irq svc_handler(void)
 	svc_t svc = *(uint8_t *)(frame->pc - 2);
 	uint32_t arg1 = frame->r0;
 	uint32_t arg2 = frame->r1;
+	uint32_t arg3 = frame->r2;
 
 	/* input_signals_poll() is the most frequent syscall */
 	if (likely(svc == SYS_input_signals_poll)) {
@@ -110,6 +111,10 @@ void __irq svc_handler(void)
         break;
     case SYS_ltc_sha_finish:
         frame->r0 = ltc_sha_finish((uint8_t *) arg1);
+        break;
+    case SYS_ltc_pkha_sign:
+        frame->r0 = ltc_pkha_sign((const pkha_curve_t *) arg1, (const pkha_input_t *) arg2,
+                                  (pkha_signature_t *) arg3);
         break;
 	default:
 		debug("unhandled svc(%u, %#10x, %#10x)\n", svc, arg1, arg2);

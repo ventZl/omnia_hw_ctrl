@@ -1,7 +1,7 @@
 SRCS_PLAT_mkl	= $(wildcard src/platform/mkl/*.c)
 
 ISR_VECTOR_LENGTH_mkl	= 0xC0
-APP_POS_mkl		= 0x5000
+APP_POS_mkl		= 0x6000
 CSUM_POS_mkl		= $(ISR_VECTOR_LENGTH_mkl)
 FEAT_POS_mkl		= 0xC8
 BOOT_FEAT_POS_mkl	= 0xD4

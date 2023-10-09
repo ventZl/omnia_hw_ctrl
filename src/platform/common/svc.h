@@ -113,7 +113,9 @@ typedef enum {
     SYS_ltc_init,
     SYS_ltc_sha_start,
     SYS_ltc_sha_data,
-    SYS_ltc_sha_finish
+    SYS_ltc_sha_finish,
+    SYS_ltc_pkha_sign,
+    SYS_ltc_pkha_verify
 } svc_t;
 
 static __force_inline uint32_t sv_call_0(svc_t svc)

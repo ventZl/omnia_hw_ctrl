@@ -12,6 +12,47 @@ typedef enum {
     LTC_SHA_256 = LTC0_MD_ALG_MDHA_SHA_256
 } ltc_sha_mode_t;
 
+/* Type encapsulating long numbers used in PK. */
+typedef struct {
+    /* Binary image of the large integer.
+     * The number herein is stored in a way that the lowest
+     * offset of this array holds LSbyte of the number. More
+     * significant bytes are then stored into following offsets
+     * up to the MSbyte.
+     * @note This array is forced to be 4-byte aligned so we can
+     * do 32-bit loads and stores from/to it to speed things up.
+     */
+    uint8_t number[256] __attribute__((aligned(4)));
+
+    /* Valid length of @ref number.
+     * Only offsets 0 .. length - 1 hold valid bytes of the
+     * large integer. 
+     */
+    unsigned length;     
+} pkha_number_t;
+
+typedef struct {
+    pkha_number_t Gx;   /* x coord of curve base point */
+    pkha_number_t Gy;   /* y coord of curve base point */
+    pkha_number_t a;    /* a parameter of curve */
+    pkha_number_t b;    /* b parameter of curve */
+    pkha_number_t n;    /* n - order of [Gx, Gy] */
+} pkha_curve_t;
+
+/* This struct only exist to minimize amount of 
+ * ECDSA-related number of function arguments
+ */
+typedef struct {
+    const pkha_number_t random_k; /* k - random value */
+    const pkha_number_t pkey; /* private key? */
+    const pkha_number_t hash; /* z - message hash */
+} pkha_input_t;
+
+typedef struct {
+    pkha_number_t c; /* a.k.a r - first part of digital signature */
+    pkha_number_t d; /* a.k.a s - second part of digital signature */
+} pkha_signature_t;
+
 #define _REG_A              0
 #define _REG_B              1
 #define _REG_E              2
@@ -46,24 +87,30 @@ typedef enum {
 	N3 = (REGISTER_N | REGISTER_QUADRANT_3),
 } pkha_reg_t;
 
-#define LTC_PKHA_FUNC_COPY  (0b10000)
+#define LTC_PKHA_ENGINE_ECC (0x800000)
 
-#define LTC_PKHA_FUNC_ADD   (0x00002)
-#define LTC_PKHA_FUNC_SUB_1 (0x00003)
-#define LTC_PKHA_FUNC_SUB_2 (0x00004)
-#define LTC_PKHA_FUNC_MUL   (0x00405)
-#define LTC_PKHA_FUNC_EXP   (0x00406)
-#define LTC_PKHA_FUNC_AMODN (0x00007)
-#define LTC_PKHA_FUNC_INV   (0x00008)
-#define LTC_PKHA_FUNC_R2    (0x0000C)
-#define LTC_PKHA_FUNC_GCD   (0x0000E)
-#define LTC_PKHA_FUNC_PRIME (0x0000F)
+/* Function codes for PKHA functions. Stated here as they
+ * span multiple LTC_PKMD fields.
+ */
+#define LTC_PKHA_FUNC_COPY  (LTC_PKHA_ENGINE_ECC | 0b10000)
+#define LTC_PKHA_FUNC_CLEAN (LTC_PKHA_ENGINE_ECC | 0b00001)
 
-#define LTC_PKHA_FUNC_ECC_MOD_ADD (0x00009)
-#define LTC_PKHA_FUNC_ECC_MOD_DBL (0x0000A)
-#define LTC_PKHA_FUNC_ECC_MOD_MUL (0x0040B)
+#define LTC_PKHA_FUNC_ADD   (LTC_PKHA_ENGINE_ECC | 0x00002)
+#define LTC_PKHA_FUNC_SUB_1 (LTC_PKHA_ENGINE_ECC | 0x00003)
+#define LTC_PKHA_FUNC_SUB_2 (LTC_PKHA_ENGINE_ECC | 0x00004)
+#define LTC_PKHA_FUNC_MUL   (LTC_PKHA_ENGINE_ECC | 0x00405)
+#define LTC_PKHA_FUNC_EXP   (LTC_PKHA_ENGINE_ECC | 0x00406)
+#define LTC_PKHA_FUNC_AMODN (LTC_PKHA_ENGINE_ECC | 0x00007)
+#define LTC_PKHA_FUNC_INV   (LTC_PKHA_ENGINE_ECC | 0x00008)
+#define LTC_PKHA_FUNC_R2    (LTC_PKHA_ENGINE_ECC | 0x0000C)
+#define LTC_PKHA_FUNC_GCD   (LTC_PKHA_ENGINE_ECC | 0x0000E)
+#define LTC_PKHA_FUNC_PRIME (LTC_PKHA_ENGINE_ECC | 0x0000F)
 
-#define LTC_PKHA_DEST_B     (0x00100)
+#define LTC_PKHA_FUNC_ECC_MOD_ADD (LTC_PKHA_ENGINE_ECC | 0x00009)
+#define LTC_PKHA_FUNC_ECC_MOD_DBL (LTC_PKHA_ENGINE_ECC | 0x0000A)
+#define LTC_PKHA_FUNC_ECC_MOD_MUL (LTC_PKHA_ENGINE_ECC | 0x0040B)
+
+#define LTC_PKHA_DEST_A     (0x00100)
 
 /** Initialize the LTC peripheral.
  * This will enable clock to the LTC peripheral.
@@ -287,14 +334,31 @@ static inline __privileged bool ltc_sha_finish(uint8_t * hash)
     return !ltc_sha_error();
 }
 
-static inline bool _ltc_pkha_execute(uint32_t command)
+static inline bool _ltc_pkha_execute(uint32_t command, pkha_reg_t destination)
 {
+    /* Validate destination argument */
+    if (destination == A0)
+    {
+        command |= LTC_PKHA_DEST_A;
+    }
+    else 
+    {
+        if (destination != B0)
+        {
+            return false;
+        }
+    }
+
+    debug("MDPK = %06x\n", command);
     LTC0_MDPK = command;
 
     while (!ltc_sha_done())
     {
         if (ltc_sha_error())
+        {
+            debug("PKHA error: %x\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
             return false;
+        }
     }
 
     BME_BITFIELD(LTC0_STA, LTC0_STA_DI) = LTC0_STA_DI;
@@ -313,13 +377,13 @@ static inline __privileged bool ltc_mod_add(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_ADD;
     /* Validate destination argument */
-    if (destination == B0)
+    if (destination == A0)
     {
-        command |= LTC_PKHA_DEST_B;
+        command |= LTC_PKHA_DEST_A;
     }
     else 
     {
-        if (destination != A0)
+        if (destination != B0)
         {
             return false;
         }
@@ -355,20 +419,7 @@ static inline __privileged bool ltc_mod_sub(pkha_reg_t destination, pkha_reg_t s
         }
     }
 
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
-
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 /* B | A <- (A * B) mod N */
@@ -381,20 +432,8 @@ static inline __privileged bool ltc_mod_sub(pkha_reg_t destination, pkha_reg_t s
 static inline __privileged bool ltc_mod_mul(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_MUL;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -402,20 +441,8 @@ static inline __privileged bool ltc_mod_mul(pkha_reg_t destination)
 static inline __privileged bool ltc_mod_exp(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_EXP;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -428,20 +455,7 @@ static inline __privileged bool ltc_mod_exp(pkha_reg_t destination)
 static inline __privileged bool ltc_mod_amodn(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_AMODN;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
-
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -454,20 +468,8 @@ static inline __privileged bool ltc_mod_amodn(pkha_reg_t destination)
 static inline __privileged bool ltc_mod_inv(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_INV;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -475,20 +477,8 @@ static inline __privileged bool ltc_mod_inv(pkha_reg_t destination)
 static inline __privileged bool ltc_mod_r2(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_R2;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
-
-    return _ltc_pkha_execute(command);
+    
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -501,20 +491,8 @@ static inline __privileged bool ltc_mod_r2(pkha_reg_t destination)
 static inline __privileged bool ltc_mod_gcd(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_GCD;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -527,20 +505,8 @@ static inline __privileged bool ltc_mod_gcd(pkha_reg_t destination)
 static inline __privileged bool ltc_prime_test(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_PRIME;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -553,20 +519,8 @@ static inline __privileged bool ltc_prime_test(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_mod_add(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_ECC_MOD_ADD;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -579,20 +533,8 @@ static inline __privileged bool ltc_ecc_mod_add(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_mod_dbl(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_ECC_MOD_DBL;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -605,20 +547,8 @@ static inline __privileged bool ltc_ecc_mod_dbl(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_mod_mul(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_ECC_MOD_MUL;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -626,20 +556,8 @@ static inline __privileged bool ltc_ecc_mod_mul(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_f2m_add(pkha_reg_t destination)
 {
     uint32_t command = 0;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -647,20 +565,8 @@ static inline __privileged bool ltc_ecc_f2m_add(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_f2m_dbl(pkha_reg_t destination)
 {
     uint32_t command = 0;
-    /* Validate destination argument */
-    if (destination == B0)
-    {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
-        {
-            return false;
-        }
-    }
 
-    return _ltc_pkha_execute(command);
+    return _ltc_pkha_execute(command, destination);
 }
 
 
@@ -668,27 +574,29 @@ static inline __privileged bool ltc_ecc_f2m_dbl(pkha_reg_t destination)
 static inline __privileged bool ltc_ecc_f2m_mul(pkha_reg_t destination)
 {
     uint32_t command = 0;
-    /* Validate destination argument */
-    if (destination == B0)
+
+    return _ltc_pkha_execute(command, destination);
+}
+
+
+static inline __privileged bool ltc_clear(pkha_reg_t reg)
+{
+    uint32_t clr_reg = ((uint32_t) reg) >> 3;
+    uint32_t clr_segment = ((uint32_t) reg) & 3;
+
+    if (clr_reg == _REG_N)
     {
-        command |= LTC_PKHA_DEST_B;
-    }
-    else 
-    {
-        if (destination != A0)
+        if (clr_segment > 0)
         {
             return false;
         }
     }
 
-    return _ltc_pkha_execute(command);
-}
-
-
-static inline __privileged bool ltc_clear(pkha_reg_t destination)
-{
-    (void) destination;
-    return false;
+    uint32_t command = (1 << (19 - clr_reg)) | LTC_PKHA_FUNC_CLEAN;
+    /* HACK! HACK! HACK! here we pass B0 so _ltc_pkha_execute won't mess 
+     * with the command passed.
+     */
+    return _ltc_pkha_execute(command, B0);
 }
 
 /* A | B | E | N <- A | B | N @ sizeof(A | B | E | N) */
@@ -705,6 +613,7 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
 {
     if (source == destination || source == E)
     {
+        debug("Implausible source!\n");
         return false;
     }
     uint32_t src_reg = ((uint32_t) source) >> 3;
@@ -715,6 +624,7 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
 
     if (destination == E && dst_segment != 0)
     {
+        debug("Invalid quadrant!\n");
         return false;
     }
 
@@ -731,7 +641,10 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
     while (!ltc_sha_done())
     {
         if (ltc_sha_error())
+        {
+            debug("LTC error %d copying!\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
             return false;
+        }
     }
 
     BME_BITFIELD(LTC0_STA, LTC0_STA_DI) = LTC0_STA_DI;
@@ -741,13 +654,11 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
 
 /* A | B | E | N <- mem @ sizeof(mem) */
 /** Load PKHA register from RAM.
- * TODO: This will probably need some kind of byteswap
  * @param destination target PKHA register and segment
- * @param source source RAM buffer containing the source data
- * @param size size of the source data
+ * @param source source number stored in RAM
  * @returns true if copy has been performed, false otherwise 
  */
-static inline __privileged bool ltc_load(pkha_reg_t destination, const uint32_t * source, unsigned size)
+static inline __privileged bool ltc_load(pkha_reg_t destination, const pkha_number_t * source)
 {
     uint32_t dst_reg = ((uint32_t) destination) >> 3;
     uint32_t dst_segment = ((uint32_t) destination) & 3;
@@ -757,142 +668,284 @@ static inline __privileged bool ltc_load(pkha_reg_t destination, const uint32_t 
         if (dst_reg == _REG_E)
             return false;
 
-        if (size > 64)
+        if (source->length > 64)
             return false;
     } else {
-        if (size > 256)
+        if (source->length > 256)
             return false;
     }
    
-    uint32_t size32 = size / 4;
-    if (size % 4 != 0)
+    uint32_t length32 = source->length / 4;
+    if (source->length % 4 != 0)
     {
-        size32++;
+        length32++;
     }
 
     switch (dst_reg)
     {
         case _REG_A:
-            {
-                LTC0_PKASZ = size;
-                for (unsigned q = 0; q < size32; ++q)
-                {
-                    LTC0_PKHA_A(dst_segment, q) = source[q];
-                }
-            }
-            return true;
-
+            LTC0_PKASZ = source->length;
+            break;
         case _REG_B:
-            {
-                LTC0_PKBSZ = size;
-                for (unsigned q = 0; q < size32; ++q)
-                {
-                    LTC0_PKHA_B(dst_segment, q) = source[q];
-                }
-            }
-            return true;
-
-        case _REG_N:
-            {
-                LTC0_PKNSZ = size;
-                for (unsigned q = 0; q < size32; ++q)
-                {
-                    LTC0_PKHA_N(dst_segment, q) = source[q];
-                }
-            }
-            return true;
-
+            LTC0_PKBSZ = source->length;
+            break;
         case _REG_E:
-            {
-                LTC0_PKESZ = size;
-                for (unsigned q = 0; q < size32; ++q)
-                {
-                    LTC0_PKHA_E(q) = source[q];
-                }
-            }
-            return true;
-
+            LTC0_PKESZ = source->length;
+            break;
+        case _REG_N:
+            LTC0_PKNSZ = source->length;
+            break;
         default:
+            /* Invalid register specified */
             return false;
     }
-}
 
-/* mem <- A | B | E N @ sizeof(mem) */
-/** Load PKHA register from RAM.
- * @param source source PKHA register and segment
- * @param destination target RAM buffer containing the source data
- * @param size buffer where data size will be written
- * @returns true if copy has been performed, false otherwise 
- */
-bool ltc_store(uint32_t * destination, unsigned * size, pkha_reg_t source);
+    for (unsigned q = 0; q < length32; ++q)
+    {
+        uint32_t tmp_data = ((uint32_t *) source->number)[q];
+        switch (dst_reg)
+        {
+            case _REG_A:
+                LTC0_PKHA_A(dst_segment, q) = tmp_data;
+                break;
 
-/** Perform ECDSA signature.
- * @param Nonce ???
- * @param r ???
- * @param Gx x coordinate of the base point G
- * @param Gy y coordinate of the base point G
- * @param q ???
- * @param a curve parameter a
- * @param b curve parameter b
- * @param f message hash (???)
- * @param d message signature
- */
-static inline __privileged bool ltc_phka_sign(const uint32_t * Nonce, uint16_t Nonce_size,
-                    const uint32_t * r, uint16_t r_size,
-                    const uint32_t * Gx, int Gx_size,
-                    const uint32_t * Gy, int Gy_size,
-                    const uint32_t * q, int q_size,
-                    const uint32_t * a, int a_size,
-                    const uint32_t * b, int b_size, 
-                    const uint32_t * s, 
-                    const uint32_t * f, int f_size,
-                    uint32_t * d,
-                    unsigned * d_size)
-{
-    uint32_t tmp_c[16];
-    uint32_t tmp_h[16];
-    unsigned sz_c;
-    unsigned sz_h;
+            case _REG_B:
+                LTC0_PKHA_B(dst_segment, q) = tmp_data;
+                break;
 
-    ltc_load(A0, Nonce, Nonce_size);
-    ltc_load(N0, r, r_size);
-    /* u = Nonce mod r */
-    /* A0 <- A0 mod N */
-    ltc_mod_amodn(A0);
-    /* h = 1/u mod r */
-    ltc_mov(N2, A0, false);
-    ltc_mod_inv(B0);
-    /* V = u * G  (public key for u) */
-    ltc_store(tmp_h, &sz_h, B0);
-    ltc_load(N0, q, q_size);
-    ltc_load(A3, a, a_size);
-    ltc_load(A0, Gx, Gx_size);
-    ltc_load(A1, Gy, Gy_size);
-    ltc_mov(B0, N2, false);
-    ltc_mov(E, B0, false);
-    ltc_load(B0, b, b_size);
-    ltc_ecc_mod_mul(B0);
-    ltc_mov(A0, B1, false);
-    ltc_load(N0, r, r_size);
-    /* c = Vx mod r */
-    ltc_mod_amodn(B0);
-    ltc_store(tmp_c, &sz_c, B0);
-    ltc_load(A0, s, r_size);
-    /* (s * c) mod r */
-    /* B0 <- A0 * B0 mod R */
-    ltc_mod_mul(B0);
-    ltc_load(A0, f, f_size);
-    /* B0 <- A0 + B0 mod R */
-    /* (f + (s * c)) mod r */
-    ltc_mod_add(B0);
-    ltc_load(A0, tmp_h, sz_h);
-    /* d = (h * (f + s*c)) mod r */
-    /* B0 <- A0 * B0 mod R */
-    ltc_mod_mul(B0);
-    ltc_store(d, d_size, B0);
+            case _REG_E:
+                LTC0_PKHA_E(q) = tmp_data;
+                break;
+
+            case _REG_N:
+                LTC0_PKHA_N(dst_segment, q) = tmp_data;
+                break;
+        }
+    }
 
     return true;
 }
+
+/* mem <- A | B | N @ sizeof(mem) */
+/** Save PKHA register into RAM.
+ * @param source source PKHA register and segment (reg E cannot be copied)
+ * @param destination target for number to be stored into RAM
+ * @returns true if copy has been performed, false otherwise 
+ * @note Register E is read protected and any attempt to read it will return
+ *       zeroes. Thus this function deliberately prohibits storing this register.
+ */
+static inline bool ltc_store(pkha_number_t * destination, pkha_reg_t source)
+{
+    uint32_t src_reg = ((uint32_t) source) >> 3;
+    uint32_t src_segment = ((uint32_t) source) & 3;
+
+    if (src_reg == _REG_E)
+    {
+        return false;
+    }
+
+    switch(src_reg)
+    {
+        case _REG_A:
+            destination->length = LTC0_PKASZ;
+            break;
+        case _REG_B:
+            destination->length = LTC0_PKBSZ;
+            break;
+        case _REG_N:
+            destination->length = LTC0_PKNSZ;
+            break;
+        default:
+            return false;
+    }
+
+    uint32_t length32 = destination->length / 4;
+    if (destination->length % 4 != 0)
+    {
+        length32++;
+    }
+
+    for (unsigned q = 0; q < length32; ++q)
+    {
+        uint32_t tmp_data = 0;
+        switch (src_reg)
+        {
+            case _REG_A:
+                tmp_data = LTC0_PKHA_A(src_segment, q);
+                break;
+
+            case _REG_B:
+                tmp_data = LTC0_PKHA_B(src_segment, q);
+                break;
+
+            case _REG_N:
+                tmp_data = LTC0_PKHA_N(src_segment, q);
+                break;
+        }
+        ((uint32_t *) destination->number)[q] = tmp_data;
+    }
+
+    return true;
+}
+
+/* Dumps LTC register.
+ */
+static inline void tmp_ltc_dump_register(pkha_reg_t reg, const char * what)
+{
+    uint32_t src_reg = ((uint32_t) reg) >> 3;
+    uint32_t src_segment = ((uint32_t) reg) & 3;
+    uint32_t length;
+
+    if (src_reg == _REG_E)
+    {
+        debug("%s (E):\n  ---- this register is write-only and cannot be dumped! ----\n", what);
+        return;
+    }
+
+    switch(src_reg)
+    {
+        case _REG_A:
+            length = LTC0_PKASZ;
+            debug("%s (A%d):\n ", what, src_segment);
+            break;
+        case _REG_B:
+            length = LTC0_PKBSZ;
+            debug("%s (B%d):\n ", what, src_segment);
+            break;
+        case _REG_N:
+            length = LTC0_PKNSZ;
+            debug("%s (N):\n ", what, src_segment);
+            break;
+        default:
+            return;
+    }
+
+    for (int q = length - 1; q >= 0; --q)
+    {
+        uint32_t data = 0;
+
+        switch (src_reg)
+        {
+        case _REG_A:
+            data = LTC0_PKHA_A(src_segment, q / 4);
+            break;
+
+        case _REG_B:
+            data = LTC0_PKHA_B(src_segment, q / 4);
+            break;
+
+        case _REG_N:
+            data = LTC0_PKHA_N(src_segment, q / 4);
+            break;
+
+        default:
+            return;
+        }
+
+        uint32_t byte = ((uint8_t *)&data)[q % 4];
+
+        debug("%02x ", byte);
+        if (q % 4 == 0 && q != 0)
+        {
+            debug("- ");
+        }
+
+    }
+    debug("\n");
+}
+
+
+/** Perform ECDSA signature.
+ * @param curve EC curve parameters used (Gx, Gy, a, b, q)
+ * @param input signing input used (message hash, random nonce, private key)
+ * @param output resulting signature (r, s)
+ */
+static inline __privileged bool ltc_pkha_sign(
+                    const pkha_curve_t * curve, /* curve parameters Cx,Cy,a,b,p */
+                    const pkha_input_t * input, /* private key, random value, message hash */
+                    pkha_signature_t * output /* signature (r, s) */
+                   )
+{
+    pkha_number_t tmp_h; /* a.k.a k^-1 - modular inverse of k */
+
+    /* A0 <- A0 mod N */
+    /* u = Nonce mod r */
+    ltc_load(A0, &input->random_k);
+    tmp_ltc_dump_register(A0, "random_k");
+    ltc_load(N0, &curve->n);
+    tmp_ltc_dump_register(N0, "modulus");
+    ltc_mod_amodn(A0);
+    tmp_ltc_dump_register(A0, "ks");
+
+    /* h = 1/u mod r */
+    ltc_mov(N2, A0, false);
+    tmp_ltc_dump_register(N0, "modulus");
+    ltc_mod_inv(B0);
+//    tmp_ltc_dump_register(B0, "1/nonce mod r");
+    tmp_ltc_dump_register(B0, "h");
+
+    /* V = u * G  (public key for u) */
+    ltc_store(&tmp_h, B0);
+    ltc_clear(B0);
+    ltc_clear(A0);
+    ltc_clear(E);
+
+    ltc_mov(B0, N2, false);
+    tmp_ltc_dump_register(B0, "ks");
+
+    ltc_clear(N0);
+    ltc_load(N0, &(curve->n));
+    ltc_load(A3, &(curve->a));
+    ltc_load(A0, &(curve->Gx));
+    ltc_load(A1, &(curve->Gy));
+
+//    tmp_ltc_dump_register(B0, "h");
+    debug("V = u * G\nInputs:\n");
+
+    ltc_mov(E, B0, false);
+
+    ltc_load(B0, &(curve->b));
+    tmp_ltc_dump_register(N0, "modulus");
+    tmp_ltc_dump_register(A3, "curve a");
+    tmp_ltc_dump_register(B0, "curve b");
+    tmp_ltc_dump_register(A0, "Gx");
+    tmp_ltc_dump_register(A1, "Gy");
+
+    ltc_ecc_mod_mul(B0);
+    debug("Outputs:\n");
+    tmp_ltc_dump_register(B1, "r");
+
+    /* c = Vx mod r */
+    ltc_mov(A0, B1, false);
+    ltc_load(N0, &curve->n);
+    ltc_mod_amodn(B0);
+    tmp_ltc_dump_register(B0, "r");
+
+    /* (s * c) mod r */
+    /* B0 <- A0 * B0 mod R */
+    ltc_store(&output->c, B0);
+    ltc_load(A0, &input->pkey);
+    tmp_ltc_dump_register(A0, "key");
+    ltc_mod_mul(B0);
+
+    /* B0 <- A0 + B0 mod R */
+    /* (f + (s * c)) mod r */
+    ltc_load(A0, &input->hash);
+    tmp_ltc_dump_register(A0, "hash");
+    ltc_mod_add(B0);
+
+    /* d = (h * (f + s*c)) mod r */
+    /* B0 <- A0 * B0 mod R */
+    ltc_load(A0, &tmp_h);
+    ltc_mod_mul(B0);
+    tmp_ltc_dump_register(B0, "s");
+
+    ltc_store(&output->d, B0);
+
+    return true;
+}
+
+SYSCALL(ltc_pkha_sign, const pkha_curve_t *, const pkha_input_t *, pkha_signature_t *)
 
 static inline __privileged bool ltc_phka_verify()
 {
