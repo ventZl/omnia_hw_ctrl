@@ -12,6 +12,14 @@ typedef enum {
     LTC_SHA_256 = LTC0_MD_ALG_MDHA_SHA_256
 } ltc_sha_mode_t;
 
+typedef enum {
+    LTC_OK,             /* Operation succeeded */
+    LTC_BadRandomValue, /* Unsuitable random value, choose another and restart */
+    LTC_Error,          /* LTC peripheral error, re-initialize it for further use */
+    LTC_SignatureInvalid, /* Signature verification failed, signature either malformed or invalid */
+    LTC_SignatureValid  /* Signature verification passed */
+} ltc_pkha_result_t;
+
 /* Type encapsulating long numbers used in PK. */
 typedef struct {
     /* Binary image of the large integer.
@@ -36,7 +44,8 @@ typedef struct {
     pkha_number_t Gy;   /* y coord of curve base point */
     pkha_number_t a;    /* a parameter of curve */
     pkha_number_t b;    /* b parameter of curve */
-    pkha_number_t n;    /* n - order of [Gx, Gy] */
+    pkha_number_t n;    /* n - order of [Gx, Gy] - modulus for integer operations */
+    pkha_number_t p;    /* p - prime parameter of curve - modulus for curve operations */
 } pkha_curve_t;
 
 /* This struct only exist to minimize amount of 
@@ -44,9 +53,16 @@ typedef struct {
  */
 typedef struct {
     const pkha_number_t random_k; /* k - random value */
-    const pkha_number_t pkey; /* private key? */
+    const pkha_number_t pkey; /* private key */
     const pkha_number_t hash; /* z - message hash */
-} pkha_input_t;
+} pkha_sign_input_t;
+
+typedef struct {
+    const pkha_number_t Kx; /* public key point - x coord */
+    const pkha_number_t Ky; /* public key point - y coord */
+    const pkha_number_t hash; /* z - message hash */
+
+} pkha_verify_input_t;
 
 typedef struct {
     pkha_number_t c; /* a.k.a r - first part of digital signature */
@@ -157,9 +173,23 @@ static inline __privileged bool ltc_sha_busy()
     return (BME_BITFIELD(LTC0_STA, LTC0_STA_MB));
 }
 
+/** Tell if last operation ended in error.
+ * @returns true if last operation ended due to the error. False otherwise.
+ * @note If operation ended due to to the error, the only way to resume
+ * LTC operation is to re-initialize the peripheral.
+ */
 static inline __privileged bool ltc_sha_error()
 {
     return (BME_BITFIELD(LTC0_STA, LTC0_STA_EI));
+}
+
+/* Tell if last operation returned zero, or point at infinity.
+ * @return true if the last PKHA operation result is either zero (ltc_mod_*)
+ * or point at infinity (ltc_ecc_mod_*). False otherwise.
+ */
+static inline __privileged bool ltc_result_zero()
+{
+    return (BME_BITFIELD(LTC0_STA, LTC0_STA_PKZ));
 }
 
 /** Prepare the peripheral for hashing.
@@ -334,6 +364,8 @@ static inline __privileged bool ltc_sha_finish(uint8_t * hash)
     return !ltc_sha_error();
 }
 
+SYSCALL(ltc_sha_finish, uint8_t *)
+
 static inline bool _ltc_pkha_execute(uint32_t command, pkha_reg_t destination)
 {
     /* Validate destination argument */
@@ -349,14 +381,14 @@ static inline bool _ltc_pkha_execute(uint32_t command, pkha_reg_t destination)
         }
     }
 
-    debug("MDPK = %06x\n", command);
+    debug("LTC command %x\n", command);
     LTC0_MDPK = command;
 
     while (!ltc_sha_done())
     {
         if (ltc_sha_error())
         {
-            debug("PKHA error: %x\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
+            debug("LTC error %d\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
             return false;
         }
     }
@@ -376,20 +408,8 @@ static inline bool _ltc_pkha_execute(uint32_t command, pkha_reg_t destination)
 static inline __privileged bool ltc_mod_add(pkha_reg_t destination)
 {
     uint32_t command = LTC_PKHA_FUNC_ADD;
-    /* Validate destination argument */
-    if (destination == A0)
-    {
-        command |= LTC_PKHA_DEST_A;
-    }
-    else 
-    {
-        if (destination != B0)
-        {
-            return false;
-        }
-    }
 
-    return false;
+    return _ltc_pkha_execute(command, destination);
 }
 
 /* B | A <- (A - B) mod N or */
@@ -607,13 +627,20 @@ static inline __privileged bool ltc_clear(pkha_reg_t reg)
  * @param nsz if true then at most @ref LTC0_PKNSZ will be copied, otherwise, 
  * the size of the source register will determine amount of copied data.
  * @note Source and target cannot be the same.
- * @return true if operation succeeded, false otherwise.
+ * @return true if operation succeeded, false otherwise. Possible reasons for failed copy
+ * are:
+ * - source register is E. E is write-only register and attempt to copy out of it would
+ *   return zeroes. Attempt to do so will fail.
+ * - either source or target quadrant is non-zero, when register E is target.
+ *   LTC peripheral does not provide commands to copy to register E from other than 0th 
+ *   quadrant.
+ * - Operation-specific error. Consult the content of LTC0_ESTA_ERRID1 field to find out 
+ *   more.
  */
 static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t source, bool nsz)
 {
     if (source == destination || source == E)
     {
-        debug("Implausible source!\n");
         return false;
     }
     uint32_t src_reg = ((uint32_t) source) >> 3;
@@ -622,9 +649,10 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
     uint32_t src_segment = ((uint32_t) source) & 3;
     uint32_t dst_segment = ((uint32_t) destination) & 3;
 
-    if (destination == E && dst_segment != 0)
+    if (destination == E && (dst_segment != 0 || src_segment != 0))
     {
-        debug("Invalid quadrant!\n");
+        /* There is no mapping for copying from non-zero source segment into E */
+        debug("Register E does not support segments!\n");
         return false;
     }
 
@@ -642,7 +670,7 @@ static inline __privileged bool ltc_mov(pkha_reg_t destination, pkha_reg_t sourc
     {
         if (ltc_sha_error())
         {
-            debug("LTC error %d copying!\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
+            debug("Move failed with error: %d\n", BME_BITFIELD(LTC0_ESTA, LTC0_ESTA_ERRID1_MASK));
             return false;
         }
     }
@@ -788,6 +816,81 @@ static inline bool ltc_store(pkha_number_t * destination, pkha_reg_t source)
     return true;
 }
 
+/* mem == A | B | N @ sizeof(mem) */
+/** Compare PKHA register to the contents of RAM.
+ * @param source source PKHA register and segment (reg E cannot be copied)
+ * @param destination target for number to be compared with in RAM
+ * @returns true if number in RAM matches number in PKHA register, false otherwise 
+ * @note Register E is read protected and any attempt to read it will return
+ *       zeroes. Thus this function deliberately returns false upon an attempt
+ *       to compare it with RAM.
+ */
+static inline bool ltc_compare(pkha_reg_t source, const pkha_number_t * destination)
+{
+    uint32_t src_reg = ((uint32_t) source) >> 3;
+    uint32_t src_segment = ((uint32_t) source) & 3;
+    uint32_t tmp_length;
+
+    if (src_reg == _REG_E)
+    {
+        return false;
+    }
+
+    switch(src_reg)
+    {
+        case _REG_A:
+            tmp_length = LTC0_PKASZ;
+            break;
+        case _REG_B:
+            tmp_length = LTC0_PKBSZ;
+            break;
+        case _REG_N:
+            tmp_length = LTC0_PKNSZ;
+            break;
+        default:
+            return false;
+    }
+
+    if (tmp_length != destination->length)
+    {
+        debug("Length differs!\n");
+        return false;
+    }
+
+    uint32_t length32 = tmp_length / 4;
+    if (tmp_length % 4 != 0)
+    {
+        length32++;
+    }
+
+    for (unsigned q = 0; q < length32; ++q)
+    {
+        uint32_t tmp_data = 0;
+        switch (src_reg)
+        {
+            case _REG_A:
+                tmp_data = LTC0_PKHA_A(src_segment, q);
+                break;
+
+            case _REG_B:
+                tmp_data = LTC0_PKHA_B(src_segment, q);
+                break;
+
+            case _REG_N:
+                tmp_data = LTC0_PKHA_N(src_segment, q);
+                break;
+        }
+        if (tmp_data != ((uint32_t *) destination->number)[q])
+        {
+            debug("%0x doesn't match %0x\n", tmp_data, ((uint32_t *) destination->number)[q]);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
 /* Dumps LTC register.
  */
 static inline void tmp_ltc_dump_register(pkha_reg_t reg, const char * what)
@@ -860,9 +963,9 @@ static inline void tmp_ltc_dump_register(pkha_reg_t reg, const char * what)
  * @param input signing input used (message hash, random nonce, private key)
  * @param output resulting signature (r, s)
  */
-static inline __privileged bool ltc_pkha_sign(
+static inline __privileged ltc_pkha_result_t ltc_pkha_sign(
                     const pkha_curve_t * curve, /* curve parameters Cx,Cy,a,b,p */
-                    const pkha_input_t * input, /* private key, random value, message hash */
+                    const pkha_sign_input_t * input, /* private key, random value, message hash */
                     pkha_signature_t * output /* signature (r, s) */
                    )
 {
@@ -871,86 +974,234 @@ static inline __privileged bool ltc_pkha_sign(
     /* A0 <- A0 mod N */
     /* u = Nonce mod r */
     ltc_load(A0, &input->random_k);
-    tmp_ltc_dump_register(A0, "random_k");
     ltc_load(N0, &curve->n);
-    tmp_ltc_dump_register(N0, "modulus");
-    ltc_mod_amodn(A0);
-    tmp_ltc_dump_register(A0, "ks");
+    if (!ltc_mod_amodn(A0))
+    {
+        return LTC_Error;
+    }
 
     /* h = 1/u mod r */
     ltc_mov(N2, A0, false);
-    tmp_ltc_dump_register(N0, "modulus");
-    ltc_mod_inv(B0);
-//    tmp_ltc_dump_register(B0, "1/nonce mod r");
-    tmp_ltc_dump_register(B0, "h");
+    if (!ltc_mod_inv(B0))
+    {
+        return LTC_Error;
+    }
+
 
     /* V = u * G  (public key for u) */
     ltc_store(&tmp_h, B0);
-    ltc_clear(B0);
-    ltc_clear(A0);
-    ltc_clear(E);
-
     ltc_mov(B0, N2, false);
-    tmp_ltc_dump_register(B0, "ks");
 
-    ltc_clear(N0);
-    ltc_load(N0, &(curve->n));
     ltc_load(A3, &(curve->a));
     ltc_load(A0, &(curve->Gx));
     ltc_load(A1, &(curve->Gy));
 
-//    tmp_ltc_dump_register(B0, "h");
-    debug("V = u * G\nInputs:\n");
-
     ltc_mov(E, B0, false);
 
     ltc_load(B0, &(curve->b));
-    tmp_ltc_dump_register(N0, "modulus");
-    tmp_ltc_dump_register(A3, "curve a");
-    tmp_ltc_dump_register(B0, "curve b");
-    tmp_ltc_dump_register(A0, "Gx");
-    tmp_ltc_dump_register(A1, "Gy");
+    ltc_load(N0, &(curve->p));
 
-    ltc_ecc_mod_mul(B0);
-    debug("Outputs:\n");
-    tmp_ltc_dump_register(B1, "r");
+    if (!ltc_ecc_mod_mul(B0))
+    {
+        return LTC_Error;
+    }
 
-    /* c = Vx mod r */
     ltc_mov(A0, B1, false);
     ltc_load(N0, &curve->n);
-    ltc_mod_amodn(B0);
-    tmp_ltc_dump_register(B0, "r");
+    if (!ltc_mod_amodn(B0))
+    {
+        return LTC_Error;
+    }
+
+    if (ltc_result_zero())
+    {
+        /* Result is point at infinity.
+         * This is not really a bug or problem, just the random number
+         * chosen was extremely unlucky. Restart this operation using
+         * different value for random_k.
+         */
+        return LTC_BadRandomValue;
+    }
 
     /* (s * c) mod r */
     /* B0 <- A0 * B0 mod R */
     ltc_store(&output->c, B0);
+    tmp_ltc_dump_register(B0, "r");
     ltc_load(A0, &input->pkey);
-    tmp_ltc_dump_register(A0, "key");
-    ltc_mod_mul(B0);
+    if (!ltc_mod_mul(B0))
+    {
+        return LTC_Error;
+    }
+
 
     /* B0 <- A0 + B0 mod R */
     /* (f + (s * c)) mod r */
     ltc_load(A0, &input->hash);
-    tmp_ltc_dump_register(A0, "hash");
-    ltc_mod_add(B0);
+    if (!ltc_mod_amodn(A0))
+    {
+        return LTC_Error;
+    }
+
+    if (!ltc_mod_add(B0))
+    {
+        return LTC_Error;
+    }
 
     /* d = (h * (f + s*c)) mod r */
     /* B0 <- A0 * B0 mod R */
     ltc_load(A0, &tmp_h);
-    ltc_mod_mul(B0);
-    tmp_ltc_dump_register(B0, "s");
+    if (!ltc_mod_mul(B0))
+    {
+        return LTC_Error;
+    }
 
+    if (ltc_result_zero())
+    {
+        /* Result is zero.
+         * This is not really a bug or problem, just the random number
+         * chosen was extremely unlucky. Restart this operation using
+         * different value for random_k.
+         */
+        return LTC_BadRandomValue;
+    }
+    
+    tmp_ltc_dump_register(B0, "s");
     ltc_store(&output->d, B0);
 
-    return true;
+    return LTC_OK;
 }
 
-SYSCALL(ltc_pkha_sign, const pkha_curve_t *, const pkha_input_t *, pkha_signature_t *)
+SYSCALL(ltc_pkha_sign, const pkha_curve_t *, const pkha_sign_input_t *, pkha_signature_t *)
 
-static inline __privileged bool ltc_phka_verify()
+static inline __privileged ltc_pkha_result_t ltc_pkha_verify(
+                                            const pkha_curve_t * curve,
+                                            const pkha_verify_input_t * input,
+                                            const pkha_signature_t * signature
+                                        )
 {
-    return false;
+    pkha_number_t tmp_buf1; /* u2, then t1_x */
+    pkha_number_t tmp_buf2; /* t2_x */
+    debug("Verify:\n\n");
+    ltc_load(N0, &(curve->n));
+    tmp_ltc_dump_register(N0, "n");
+    ltc_load(A0, &(signature->c));
+    tmp_ltc_dump_register(A0, "r");
+    /* Check if 0 < c < N */ 
+    if (!ltc_mod_amodn(B0))
+    {
+        return LTC_Error;
+    }
+    tmp_ltc_dump_register(B0, "r again");
+
+    if (ltc_result_zero())
+    {
+        return LTC_SignatureInvalid;
+    }
+    
+    /* If A mod N differs from the original value, then c > N */
+    if (!ltc_compare(B0, &(signature->c)))
+    {
+        return LTC_SignatureInvalid;
+    }
+
+    /* Check if 0 < d < N */ 
+    ltc_load(A0, &(signature->d));
+    if (!ltc_mod_amodn(B0))
+    {
+        return LTC_Error;
+    }
+
+    if (!ltc_compare(B0, &(signature->d)))
+    {
+        return LTC_SignatureInvalid;
+    }
+
+    /* c = d^-1 mod n */
+    ltc_mod_inv(B0);
+    tmp_ltc_dump_register(B0, "c");
+    ltc_mov(N3, B0, false);
+    ltc_load(A0, &(input->hash));
+    /* u1 = (hash * c) mod n */
+    ltc_mod_mul(A0);
+    tmp_ltc_dump_register(A0, "u1");
+
+    ltc_mov(N2, A0, false);
+
+    ltc_load(A0, &(signature->c));
+    ltc_mov(B0, N3, false);
+    /* u2 = (r * c) mod n */
+    tmp_ltc_dump_register(A0, "r");
+    tmp_ltc_dump_register(B0, "c again");
+    ltc_mod_mul(A0);
+    tmp_ltc_dump_register(A0, "u2");
+
+
+    /* N2 <- u1, A0 <- u2 */
+    ltc_mov(B0, N2, false);
+    ltc_mov(E, B0, false);
+    ltc_store(&tmp_buf1, A0);
+
+    /* E <- u1, N2 <- u2 */
+    ltc_load(A0, &(curve->Gx));
+    ltc_load(A1, &(curve->Gy));
+    ltc_load(A3, &(curve->a));
+    tmp_ltc_dump_register(A3, "a");
+    ltc_load(B0, &(curve->b));
+    tmp_ltc_dump_register(B0, "b");
+    ltc_load(N0, &(curve->p));
+    tmp_ltc_dump_register(N0, "p");
+    tmp_ltc_dump_register(A0, "Gx");
+    tmp_ltc_dump_register(A1, "Gy");
+
+    /* [B1, B2] <= u1 * G */
+    ltc_ecc_mod_mul(B0);
+    tmp_ltc_dump_register(B1, "t1_x");
+    tmp_ltc_dump_register(B2, "t1_x");
+
+    /* You cannot move directly from non-zero segment into E */
+    ltc_load(A0, &tmp_buf1);
+    tmp_ltc_dump_register(A0, "u2");
+    ltc_mov(E, A0, false);
+
+    /* Save result for later use */
+    ltc_store(&tmp_buf1, B1);
+    ltc_store(&tmp_buf2, B2);
+
+    ltc_load(A0, &(input->Kx));
+    ltc_load(A1, &(input->Ky));
+    ltc_load(A3, &(curve->a));
+    tmp_ltc_dump_register(A3, "a");
+    ltc_load(B0, &(curve->b));
+    tmp_ltc_dump_register(B0, "b");
+    ltc_load(N0, &(curve->p));
+    tmp_ltc_dump_register(N0, "p");
+    tmp_ltc_dump_register(A0, "Kx");
+    tmp_ltc_dump_register(A1, "Ky");
+
+    /* [B1, B2] <= u2 * P */
+    ltc_ecc_mod_mul(B0);
+    tmp_ltc_dump_register(B1, "t2_x");
+    tmp_ltc_dump_register(B2, "t2_y");
+
+    ltc_load(A0, &tmp_buf1);
+    ltc_load(A1, &tmp_buf2);
+    tmp_ltc_dump_register(A0, "t1_x again");
+    tmp_ltc_dump_register(A1, "t1_y again");
+
+    ltc_ecc_mod_add(A0);
+    
+    ltc_load(N0, &(curve->n));
+    ltc_mod_amodn(A0);
+
+    if (ltc_compare(A0, &(signature->c)))
+    {
+        debug("Check Passed\n");
+        return LTC_SignatureValid;
+    }
+
+    debug("Check Failed\n");
+    return LTC_SignatureInvalid;
 
 }
 
-SYSCALL(ltc_sha_finish, uint8_t *)
+SYSCALL(ltc_pkha_verify, const pkha_curve_t *, const pkha_verify_input_t *, const pkha_signature_t *)

@@ -113,8 +113,12 @@ void __irq svc_handler(void)
         frame->r0 = ltc_sha_finish((uint8_t *) arg1);
         break;
     case SYS_ltc_pkha_sign:
-        frame->r0 = ltc_pkha_sign((const pkha_curve_t *) arg1, (const pkha_input_t *) arg2,
+        frame->r0 = ltc_pkha_sign((const pkha_curve_t *) arg1, (const pkha_sign_input_t *) arg2,
                                   (pkha_signature_t *) arg3);
+        break;
+    case SYS_ltc_pkha_verify:
+        frame->r0 = ltc_pkha_verify((const pkha_curve_t *) arg1, (const pkha_verify_input_t *) arg2,
+                                    (const pkha_signature_t *) arg3);
         break;
 	default:
 		debug("unhandled svc(%u, %#10x, %#10x)\n", svc, arg1, arg2);
