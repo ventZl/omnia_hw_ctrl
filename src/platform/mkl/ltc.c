@@ -123,11 +123,12 @@ __privileged bool ltc_sha_finish(uint8_t * hash)
     return !ltc_sha_error();
 }
 
+#if defined DBG_ENABLE && DBG_ENABLE == 1
 /* Dumps LTC register.
  * @param reg register to be dumped
  * @param what string description of register content (e.g. key, curve a, etc.)
  */
-static void tmp_ltc_dump_register(pkha_reg_t reg, const char * what)
+static __privileged void ltc_dump_register(pkha_reg_t reg, const char * what)
 {
     uint32_t src_reg = ((uint32_t) reg) >> 3;
     uint32_t src_segment = ((uint32_t) reg) & 3;
@@ -190,6 +191,10 @@ static void tmp_ltc_dump_register(pkha_reg_t reg, const char * what)
     }
     debug("\n");
 }
+#else 
+/* Dummy macro to catch leftover LTC register dumps without causing build break */
+#define ltc_dump_register(...)
+#endif
 
 /*
  * Following are functions that provide access to LTC PKHA operations in 
@@ -443,6 +448,14 @@ static inline __privileged bool _ltc_ecc_mod_mul(pkha_reg_t destination)
  * and better understandable.
  */
 
+/* Load arguments and perform A + B mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the first addend 
+ * @param b address of value for the second addend
+ * @param modulo address od value of modulo
+ * @returns true if addition was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_add(pkha_reg_t destination, 
                               const pkha_number_t * a, 
                               const pkha_number_t * b, 
@@ -455,6 +468,14 @@ __privileged bool ltc_mod_add(pkha_reg_t destination,
     return _ltc_mod_add(destination);
 }
 
+/* Load arguments and perform A - B mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the minuend 
+ * @param b address of value for the subtrahend
+ * @param modulo address od value of modulo
+ * @returns true if subtraction was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_sub(pkha_reg_t destination,
                               const pkha_number_t * a,
                               const pkha_number_t * b,
@@ -467,6 +488,14 @@ __privileged bool ltc_mod_sub(pkha_reg_t destination,
     return _ltc_mod_sub(destination, A0, B0);
 }
 
+/* Load arguments and perform A * B mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the first multiplicant 
+ * @param b address of value for the second multiplicant
+ * @param modulo address od value of modulo
+ * @returns true if multiplication was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_mul(pkha_reg_t destination,
                               const pkha_number_t * a,
                               const pkha_number_t * b,
@@ -479,6 +508,14 @@ __privileged bool ltc_mod_mul(pkha_reg_t destination,
     return _ltc_mod_mul(destination);
 }
 
+/* Load arguments and perform A^E mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the base 
+ * @param b address of value for the power
+ * @param modulo address od value of modulo
+ * @returns true if exponentiation was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_exp(pkha_reg_t destination,
                               const pkha_number_t * a,
                               const pkha_number_t * e,
@@ -491,6 +528,13 @@ __privileged bool ltc_mod_exp(pkha_reg_t destination,
     return _ltc_mod_exp(destination);
 }
 
+/* Load arguments and perform A mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the number 
+ * @param modulo address od value of modulo
+ * @returns true if modulo was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_amodn(pkha_reg_t destination,
                               const pkha_number_t * a,
                               const pkha_number_t * modulo)
@@ -501,6 +545,13 @@ __privileged bool ltc_mod_amodn(pkha_reg_t destination,
     return _ltc_mod_amodn(destination);
 }
 
+/* Load arguments and perform A^-1 mod N 
+ * @param destination output register, A0 or B0 are valid here
+ * @param a address of value for the number 
+ * @param modulo address od value of modulo
+ * @returns true if inversion was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_mod_inv(pkha_reg_t destination,
                               const pkha_number_t * a,
                               const pkha_number_t * modulo)
@@ -541,6 +592,18 @@ __privileged bool ltc_prime_test(pkha_reg_t destination,
     return _ltc_mod_add(destination);
 }
 
+/* Load arguments and perform A + B mod N of two elliptic curve points
+ * @param destination output register, A0 or B0 are valid here
+ * @param point1_x address of value for the x coordinate of the first point 
+ * @param point1_y address of value for the y coordinate of the first point 
+ * @param point2_x address of value for the x coordinate of the second point 
+ * @param point2_y address of value for the y coordinate of the second point 
+ * @param curve_a address of value for the a parameter of curve equation 
+ * @param curve_b address of value for the b parameter of curve equation 
+ * @param modulo address of value of modulo
+ * @returns true if addition was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_ecc_mod_add(pkha_reg_t destination, 
                               const pkha_number_t * point1_x, 
                               const pkha_number_t * point1_y, 
@@ -561,6 +624,16 @@ __privileged bool ltc_ecc_mod_add(pkha_reg_t destination,
     return _ltc_ecc_mod_add(destination);
 }
 
+/* Load arguments and perform A + A mod N of elliptic curve point
+ * @param destination output register, A0 or B0 are valid here
+ * @param point_x address of value for the x coordinate of the point 
+ * @param point_y address of value for the y coordinate of the point 
+ * @param curve_a address of value for the a parameter of curve equation 
+ * @param curve_b address of value for the b parameter of curve equation 
+ * @param modulo address of value of modulo
+ * @returns true if addition was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_ecc_mod_dbl(pkha_reg_t destination, 
                               const pkha_number_t * point_x, 
                               const pkha_number_t * point_y, 
@@ -577,6 +650,18 @@ __privileged bool ltc_ecc_mod_dbl(pkha_reg_t destination,
     return _ltc_ecc_mod_dbl(destination);
 }
 
+/* Load arguments and perform E x A mod N of elliptic curve point
+ * E represents a large scalar number and A represents a point on curve.
+ * @param destination output register, A0 or B0 are valid here
+ * @param scalar address of value for the scalar multiplicant
+ * @param point_x address of value for the x coordinate of the point 
+ * @param point_y address of value for the y coordinate of the point 
+ * @param curve_a address of value for the a parameter of curve equation 
+ * @param curve_b address of value for the b parameter of curve equation 
+ * @param modulo address of value of modulo
+ * @returns true if addition was completed. False is returned if there is 
+ * an error in arguments or operation failed
+ */
 __privileged bool ltc_ecc_mod_mul(pkha_reg_t destination, 
                               const pkha_number_t * scalar,
                               const pkha_number_t * point_x, 
@@ -594,8 +679,6 @@ __privileged bool ltc_ecc_mod_mul(pkha_reg_t destination,
 
     return _ltc_ecc_mod_mul(destination);
 }
-
-
 
 /** Clear content of register or quadrant.
  * Clears content of register or one of its quadrants. 
@@ -959,42 +1042,41 @@ __privileged ltc_pkha_result_t ltc_pkha_sign(
 
     /* A0 <- A0 mod N */
     /* u = Nonce mod r */
-    ltc_load(A0, &input->random_k);
-    ltc_load(N0, &curve->n);
-    if (!_ltc_mod_amodn(A0))
+    if (!ltc_mod_amodn(A0, &(input->random_k), &(curve->n)))
     {
         return LTC_Error;
     }
 
-    /* h = 1/u mod r */
+    /* Save u for later */
     ltc_mov(N2, A0, false);
+
+    /* h = 1/u mod r */
+    /* Naked version of LTC command is used here as everything 
+     * already in place for the command */
     if (!_ltc_mod_inv(B0))
     {
         return LTC_Error;
     }
 
+    /* Save h for later */
+    ltc_store(&tmp_h, B0);
 
     /* V = u * G  (public key for u) */
-    ltc_store(&tmp_h, B0);
     ltc_mov(B0, N2, false);
-
-    ltc_load(A3, &(curve->a));
-    ltc_load(A0, &(curve->Gx));
-    ltc_load(A1, &(curve->Gy));
-
     ltc_mov(E, B0, false);
 
-    ltc_load(B0, &(curve->b));
-    ltc_load(N0, &(curve->p));
-
-    if (!_ltc_ecc_mod_mul(B0))
+    /* We pass scalar as NULL here as it was already loaded from 
+     * temporary above */
+    if (!ltc_ecc_mod_mul(B0, NULL, &(curve->Gx), &(curve->Gy), 
+                         &(curve->a), &(curve->b), &(curve->p)))
     {
         return LTC_Error;
     }
 
     ltc_mov(A0, B1, false);
-    ltc_load(N0, &curve->n);
-    if (!_ltc_mod_amodn(B0))
+    /* We pass A as NULL here because A0 has been provided 
+     * above */
+    if (!ltc_mod_amodn(B0, NULL, &(curve->n)))
     {
         return LTC_Error;
     }
@@ -1010,33 +1092,37 @@ __privileged ltc_pkha_result_t ltc_pkha_sign(
     }
 
     /* (s * c) mod r */
-    /* B0 <- A0 * B0 mod R */
+
+    /* Save 'r' part of signature into output buffer */
     ltc_store(&output->c, B0);
-    tmp_ltc_dump_register(B0, "r");
-    ltc_load(A0, &input->pkey);
-    if (!_ltc_mod_mul(B0))
+
+    /* We pass both B and modulo as NULL here as they are both already
+     * set from previous command. */
+    if (!ltc_mod_mul(B0, &(input->pkey), NULL, NULL))
     {
         return LTC_Error;
     }
 
+    /* f = hash mod r */
+    /* We pass modulo as NULL here as it is already set from previous
+     * commands */
+    if (!ltc_mod_amodn(A0, &(input->hash), NULL))
+    {
+        return LTC_Error;
+    }
 
-    /* B0 <- A0 + B0 mod R */
     /* (f + (s * c)) mod r */
-    ltc_load(A0, &input->hash);
-    if (!_ltc_mod_amodn(A0))
-    {
-        return LTC_Error;
-    }
-
+    /* We use raw TLC command here as everything is in place already
+     * from previous calls */
     if (!_ltc_mod_add(B0))
     {
         return LTC_Error;
     }
 
     /* d = (h * (f + s*c)) mod r */
-    /* B0 <- A0 * B0 mod R */
-    ltc_load(A0, &tmp_h);
-    if (!_ltc_mod_mul(B0))
+    /* We pass B and modulo as NULL as they are already in place from
+     * previous calls */
+    if (!ltc_mod_mul(B0, &(tmp_h), NULL, NULL))
     {
         return LTC_Error;
     }
@@ -1051,7 +1137,7 @@ __privileged ltc_pkha_result_t ltc_pkha_sign(
         return LTC_BadRandomValue;
     }
     
-    tmp_ltc_dump_register(B0, "s");
+    /* Save 's' part of the signature into output buffer */
     ltc_store(&output->d, B0);
 
     return LTC_OK;
@@ -1101,7 +1187,10 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
     /* u1 = (hash * c) mod n */
     /* B0 already contains value of c after call to _ltc_mod_inv() and N0 
      * still contains the modulus. */
-    ltc_mod_mul(A0, &(input->hash), NULL, NULL);
+    if (!ltc_mod_mul(A0, &(input->hash), NULL, NULL))
+    {
+        return LTC_Error;
+    }
 
     /* Save value u1 into N2 register for later use */
     ltc_mov(N2, A0, false);
@@ -1111,7 +1200,10 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
 
     /* u2 = (r * c) mod n */
     /* B0 already contains value of c and N0 still contains the modulus */
-    ltc_mod_mul(A0, &(signature->c), NULL, NULL);
+    if (!ltc_mod_mul(A0, &(signature->c), NULL, NULL))
+    {
+        return LTC_Error;
+    }
 
     /* Save value of u2 into temporary buffer */
     ltc_store(&tmp_buf1, A0);
@@ -1123,32 +1215,42 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
 
     /* We pass scalar as NULL because we loaded register 
      * E above manually */
-    ltc_ecc_mod_mul(B0, NULL, &(curve->Gx), &(curve->Gy),
-                    &(curve->a), &(curve->b), &(curve->p));
+    if (!ltc_ecc_mod_mul(B0, NULL, &(curve->Gx), &(curve->Gy),
+                    &(curve->a), &(curve->b), &(curve->p)))
+    {
+        return LTC_Error;
+    }
 
     /* Pre-load value from tmp_buf1 into register E 
      * and then save temporaries into tmp_buf1 and tmp_buf2. */
     ltc_load(E, &tmp_buf1);
-
-    /* Save result for later use */
     ltc_store(&tmp_buf1, B1);
     ltc_store(&tmp_buf2, B2);
 
     /* We pass scalar as NULL because we loaded 
      * register E from tmp_buf1 above manually */
-    ltc_ecc_mod_mul(B0, NULL, &(input->Kx), &(input->Ky), 
-                    &(curve->a), &(curve->b), &(curve->p));
+    if (!ltc_ecc_mod_mul(B0, NULL, &(input->Kx), &(input->Ky), 
+                    &(curve->a), &(curve->b), &(curve->p)))
+    {
+        return LTC_Error;
+    }
 
     /* We pass p2.x, p2.y, curve.a, curve.b and curve.p as NULL 
      * because p2 coordinates were just calculated by above call 
      * to ltc_ecc_mod_mul and are in [B1, B2] and rest will be 
      * reused from previous call. */
-    ltc_ecc_mod_add(A0, &tmp_buf1, &tmp_buf2, 
-                    NULL, NULL, NULL, NULL, NULL);
+    if (!ltc_ecc_mod_add(A0, &tmp_buf1, &tmp_buf2, 
+                    NULL, NULL, NULL, NULL, NULL))
+    {
+        return LTC_Error;
+    }
     
     /* We pass A as NULL because we want to use the result of 
      * previous call to ltc_ecc_mod_add. */
-    ltc_mod_amodn(A0, NULL, &(curve->n));
+    if (!ltc_mod_amodn(A0, NULL, &(curve->n)))
+    {
+        return LTC_Error;
+    }
 
     if (ltc_compare(A0, &(signature->c)))
     {
