@@ -175,6 +175,8 @@ const pkha_verify_input_t verify = {
         24
     }
 };
+
+/* MSB of key is changed to be 0xFF */
 const pkha_verify_input_t verify_bad = {
     .Kx = {
         { 0xa4, 0x82, 0x17, 0x27, 0x2a, 0xf8, 0x3d, 0x5a,
@@ -186,13 +188,13 @@ const pkha_verify_input_t verify_bad = {
     .Ky = {
         { 0x48, 0x41, 0x7b, 0x71, 0x7b, 0x5a, 0x35, 0x43,
           0x3f, 0x4b, 0xb1, 0xee, 0x23, 0x5b, 0x63, 0x36,
-          0x40, 0xdd, 0x62, 0xa0, 0x03, 0x4d, 0xeb, 0x5f },
+          0x40, 0xdd, 0x62, 0xa0, 0x03, 0x4d, 0xeb, 0xff },
         24
     },
     .hash = {
         { 0x33, 0x76, 0xad, 0xc5, 0x26, 0x5a, 0x97, 0x5b,
           0xce, 0x3f, 0x98, 0xaf, 0x6d, 0x1d, 0x3a, 0x67,
-          0xc8, 0xe7, 0xff, 0x6a, 0x70, 0x60, 0x82, 0xd1 },
+          0xc8, 0xe7, 0xff, 0x6a, 0x70, 0x60, 0x82, 0xd0 },
         24
     }
 };
@@ -299,11 +301,52 @@ void main(void)
         static int counter = 0;
         if (counter == 0)
         {
-            sys_ltc_pkha_sign(&nist_p_192, &sign, &signature);
-            debug("Shall pass: ");
-            sys_ltc_pkha_verify(&nist_p_192, &verify, &signature);
-            debug("Shall fail: ");
-            sys_ltc_pkha_verify(&nist_p_192, &verify_bad, &signature);
+            if (sys_ltc_pkha_sign(&nist_p_192, &sign, &signature) == LTC_OK)
+            {
+                debug("Signature generated properly\n");
+            }
+            else {
+                debug("Signature generation failed!\n");
+            }
+
+            debug("Public key test (shall pass): ");
+            if(sys_ltc_pkha_validate_publickey(&nist_p_192, &verify) == LTC_KeyValid)
+            {
+                debug("Passed\n");
+            }
+            else
+            {
+                debug("Failed\n");
+            }
+
+            debug("Public key test (shall fail): ");
+            if(sys_ltc_pkha_validate_publickey(&nist_p_192, &verify_bad) == LTC_KeyValid)
+            {
+                debug("Passed\n");
+            }
+            else
+            {
+                debug("Failed\n");
+            }
+
+            debug("Signature verification (shall pass): ");
+            if (sys_ltc_pkha_verify(&nist_p_192, &verify, &signature) == LTC_SignatureValid)
+            {
+                debug("Passed\n");
+            }
+            else {
+                debug("Failed\n");
+            }
+
+            debug("Signature verification (shall fail): ");
+            if (sys_ltc_pkha_verify(&nist_p_192, &verify_bad, &signature))
+            {
+                debug("Passed\n");
+            }
+            else {
+                debug("Failed\n");
+            }
+
         }
         counter++;
 		switch (next_state) {
