@@ -17,7 +17,9 @@ typedef enum {
     LTC_BadRandomValue, /* Unsuitable random value, choose another and restart */
     LTC_Error,          /* LTC peripheral error, re-initialize it for further use */
     LTC_SignatureInvalid, /* Signature verification failed, signature either malformed or invalid */
-    LTC_SignatureValid  /* Signature verification passed */
+    LTC_SignatureValid, /* Signature verification passed */
+    LTC_KeyInvalid,     /* Public key provided is not valid */
+    LTC_KeyValid        /* Public key provided is valid */
 } ltc_pkha_result_t;
 
 /* Type encapsulating long numbers used in PK. */
@@ -340,3 +342,19 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
                                         );
 
 SYSCALL(ltc_pkha_verify, const pkha_curve_t *, const pkha_verify_input_t *, const pkha_signature_t *)
+
+/** Validate if public key provide is valid.
+ * @param curve curve used to check signatures
+ * @param public_key public key to check for validity
+ * @return LTC_PublicKeyValid if key is a valid key for verifying
+ * signatures on given curve. LTC_PublicKeyInvalid if key is either invalid
+ * or not usable with given curve. LTC_Error if LTC peripheral returned
+ * error during key validation.
+ */
+
+__privileged ltc_pkha_result_t ltc_pkha_validate_publickey(
+            const pkha_curve_t * curve,
+            const pkha_verify_input_t * public_key
+);
+
+SYSCALL(ltc_pkha_validate_publickey, const pkha_curve_t *, const pkha_verify_input_t *)

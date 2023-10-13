@@ -17,8 +17,10 @@
 #include "watchdog.h"
 #include "poweroff.h"
 #include "debug.h"
+#ifdef MKL81
 #include "trng.h"
 #include "ltc.h"
+#endif
 
 #pragma GCC optimize ("O3")
 
@@ -91,6 +93,10 @@ void __irq svc_handler(void)
 	case SYS_poweroff:
 		poweroff(arg1, arg2);
 		break;
+
+/* Following code is using TRNG and LTC peripheral of MKL81
+ * and therefore syscalls are only available there */
+#ifdef MKL81
     case SYS_trng_init:
         trng_init();
         break;
@@ -120,6 +126,11 @@ void __irq svc_handler(void)
         frame->r0 = ltc_pkha_verify((const pkha_curve_t *) arg1, (const pkha_verify_input_t *) arg2,
                                     (const pkha_signature_t *) arg3);
         break;
+    case SYS_ltc_pkha_validate_publickey:
+        frame->r0 = ltc_pkha_validate_publickey((const pkha_curve_t *) arg1, (const pkha_verify_input_t *) arg2);
+        break;
+#endif
+
 	default:
 		debug("unhandled svc(%u, %#10x, %#10x)\n", svc, arg1, arg2);
 		break;

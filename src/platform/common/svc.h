@@ -115,7 +115,8 @@ typedef enum {
     SYS_ltc_sha_data,
     SYS_ltc_sha_finish,
     SYS_ltc_pkha_sign,
-    SYS_ltc_pkha_verify
+    SYS_ltc_pkha_verify,
+    SYS_ltc_pkha_validate_publickey
 } svc_t;
 
 static __force_inline uint32_t sv_call_0(svc_t svc)

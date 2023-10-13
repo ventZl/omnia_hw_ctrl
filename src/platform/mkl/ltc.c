@@ -1263,3 +1263,120 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
 
 }
 
+/** Test if point given by affine coordinates is on curve.
+ * @param curve curve to test presence of the point on 
+ * @param point_x x coordinate of the point
+ * @param point_y y coordinate of the point
+ * @returns true if point lies on the curve. False is returned if 
+ * the data passed to function are invalid, LTC peripheral returned
+ * error or point does not lie on the curve.
+ */
+__privileged bool ltc_pkha_point_on_curve(
+            const pkha_curve_t * curve,
+            const pkha_number_t * point_x,
+            const pkha_number_t * point_y
+)
+{
+    /* x^2 */
+    if (!ltc_mod_mul(A0, point_x, point_x, &(curve->p)))
+    {
+        return false;
+    }
+
+    /* x^2 + a */
+    if (!ltc_mod_add(A0, NULL, &(curve->a), NULL))
+    {
+        return false;
+    }
+
+    /* (x^2 + a) * x */
+    if (!ltc_mod_mul(A0, NULL, point_x, NULL))
+    {
+        return false;
+    }
+
+    /* (x^2 + a) * x + b */
+    if (!ltc_mod_add(B0, NULL, &(curve->b), NULL))
+    {
+        return false;
+    }
+
+    /* B0 will be trashed by the next command, store the result into N2 */
+    ltc_mov(N2, B0, false);
+
+    /* y^2 */
+    if (!ltc_mod_mul(A0, point_y, point_y, NULL))
+    {
+        return false;
+    }
+
+    /* Restore result from N2 */
+    ltc_mov(B0, N2, false);
+
+    /* Following two LTC commands are raw as the needed
+     * inputs are already present in registers */
+    /* y^2 - ((x^2 + a) * x + b) */
+    if (!_ltc_mod_sub(A0, A0, B0))
+    {
+        return false;
+    }
+
+    /* (y^2 - ((x^2 + a) * x + b)) mod p */
+    if (!_ltc_mod_amodn(A0))
+    {
+        return false;
+    }
+
+    /* If result is zero, then point [x,y] lies on the curve */
+    return ltc_result_zero();
+}
+
+
+__privileged ltc_pkha_result_t ltc_pkha_validate_publickey(
+            const pkha_curve_t * curve,
+            const pkha_verify_input_t * public_key
+)
+{
+    const pkha_number_t * check_range[] = { &(public_key->Kx), &(public_key->Ky) };
+
+    /* Check that Kx and Ky are within <0, curve.p> range */
+    for (unsigned q = 0; q < sizeof(check_range) / sizeof(check_range[0]); ++q)
+    {
+        if (!ltc_mod_amodn(A0, check_range[q], &(curve->p)))
+        {
+            return LTC_Error;
+        }
+
+        /* Compare modulo result to original value of Kx. If it differs then Kx 
+         * isn't in required range */
+        if (!ltc_compare(A0, check_range[q]))
+        {
+            return LTC_KeyInvalid;
+        }
+    }
+
+    /* [Kx, Ky] has to be a point on curve */ 
+    if (!ltc_pkha_point_on_curve(curve, &(public_key->Kx), &(public_key->Ky)))
+    {
+        return LTC_KeyInvalid;
+    }
+
+    /* Point has to be a scalar multiple of generator point */
+    if (!ltc_ecc_mod_mul(A0, &(curve->p), &(public_key->Kx), &(public_key->Ky), 
+                         &(curve->a), &(curve->b), &(curve->p)))
+    {
+        return LTC_Error;
+    }
+
+    /* E x Kx, Ky != INFINITY */
+
+    /* If result is zero, then for ECC operation it means that result
+     * is point at infinity. Point at infinity means [Kx, Ky] is not a valid
+     * public key. */
+    if (ltc_result_zero())
+    {
+        return LTC_KeyInvalid;
+    };
+
+    return LTC_KeyValid;
+}
