@@ -1254,11 +1254,9 @@ __privileged ltc_pkha_result_t ltc_pkha_verify(
 
     if (ltc_compare(A0, &(signature->c)))
     {
-        debug("Check Passed\n");
         return LTC_SignatureValid;
     }
 
-    debug("Check Failed\n");
     return LTC_SignatureInvalid;
 
 }
